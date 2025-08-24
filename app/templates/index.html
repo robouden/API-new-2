@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Safecast API</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">SAFECAST</div>
+            <nav id="auth-nav">
+                <a href="#" id="signin-link">SIGN IN</a>
+                <a href="#" id="register-link">REGISTER</a>
+            </nav>
+             <div id="user-info" class="hidden">
+                Welcome, <span id="user-email"></span>! <button id="logout-button">Logout</button>
+            </div>
+        </header>
+        <div class="main-content">
+            <aside>
+                <ul>
+                    <li><a href="#" class="active">Safecast API</a></li>
+                    <li><a href="#">Users</a></li>
+                    <li><a href="#">Measurements</a></li>
+                    <li><a href="#">bGeigie Imports</a></li>
+                    <li><a href="#">Devices</a></li>
+                    <li><a href="#">Device Stories</a></li>
+                    <li><a href="#">Radiation Index</a></li>
+                    <li><a href="#">Ingest Export</a></li>
+                </ul>
+            </aside>
+            <main>
+                <h1>The Safecast API</h1>
+                <p>Query and add to the Safecast dataset with your own application.</p>
+
+                <div id="api-documentation">
+                    <!-- Logged-in user dashboard content will be injected here -->
+                </div>
+
+                <div id="static-api-docs">
+                    <section class="api-section">
+                        <h2>API Endpoint</h2>
+                        <div class="api-endpoint">
+                            <pre><code>GET https://api.safecast.org/.json</code></pre>
+                        </div>
+                    </section>
+
+                    <section class="api-section">
+                        <h2>Available Resources</h2>
+                        <ul class="resource-list">
+                            <li><strong>Users</strong> Add and view user accounts</li>
+                            <li><strong>Measurements</strong> Add and view measurements</li>
+                            <li><strong>bGeigie Imports</strong> Add and view bGeigie Imports</li>
+                            <li><strong>Devices</strong> Add and view Devices</li>
+                        </ul>
+                    </section>
+
+                    <section class="api-section">
+                        <h2>Users</h2>
+                        <ul class="api-calls">
+                            <li>Get a list of users <span>GET /users.json</span></li>
+                            <li>Add a new user <span>POST /users.json</span></li>
+                            <li>View a user <span>GET /users/1.json</span></li>
+                        </ul>
+                    </section>
+
+                    <section class="api-section">
+                        <h2>Measurements</h2>
+                        <ul class="api-calls">
+                            <li>Get a list of measurements <span>GET /measurements.json</span></li>
+                            <li>Add a new measurement <span>POST /measurements.json</span></li>
+                            <li>View a measurement <span>GET /measurements/13192557.json</span></li>
+                        </ul>
+                    </section>
+
+                    <section class="api-section">
+                        <h2>bGeigie Imports</h2>
+                        <ul class="api-calls">
+                            <li>Get a list of bGeigie imports <span>GET /bgeigie_imports.json</span></li>
+                            <li>Add a new bGeigie import <span>POST /bgeigie_imports.json</span></li>
+                            <li>View a bGeigie import <span>GET /bgeigie_imports/10757.json</span></li>
+                        </ul>
+                    </section>
+
+                    <section class="api-section">
+                        <h2>Devices</h2>
+                        <ul class="api-calls">
+                            <li>Get a list of devices <span>GET /devices.json</span></li>
+                            <li>Add a new device <span>POST /devices.json</span></li>
+                            <li>View a device <span>GET /devices/4.json</span></li>
+                        </ul>
+                    </section>
+
+                    <section class="api-section">
+                        <h2>Using the API</h2>
+                        <h3>Measurements</h3>
+                        <p>The <strong>Measurement</strong> is the basic unit in the Safecast database.</p>
+                        <p>A measurement is composed of four key parts.</p>
+                        <ul class="api-usage-list">
+                            <li>Timestamp <code>captured_at</code></li>
+                            <li>Unit <code>unit</code></li>
+                            <li>Value <code>value</code></li>
+                            <li>Geopoint <code>location</code> (<code>latitude</code>, <code>longitude</code>)</li>
+                        </ul>
+                    </section>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Modals for Login/Signup -->
+    <div id="login-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Login</h2>
+            <form id="login-form">
+                <input type="email" id="login-email" name="username" placeholder="Email" required>
+                <input type="password" id="login-password" name="password" placeholder="Password" required>
+                <button type="submit">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="signup-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Sign Up</h2>
+            <form id="signup-form">
+                <input type="email" id="signup-email" placeholder="Email" required>
+                <input type="password" id="signup-password" placeholder="Password" required>
+                <button type="submit">Sign Up</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

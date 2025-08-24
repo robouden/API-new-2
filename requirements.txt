@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+fastapi-mail
+duckdb
+duckdb-engine
+sqlalchemy
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
