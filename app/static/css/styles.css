@@ -122,6 +122,40 @@ main {
     display: none !important;
 }
 
+/* Filter buttons styling */
+.filter-btn, .owner-filter-btn {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.filter-btn:hover, .owner-filter-btn:hover {
+    background: #e9ecef;
+}
+
+.filter-btn.active, .owner-filter-btn.active {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+/* Table styling improvements */
+#bgeigie-imports-table th {
+    user-select: none;
+}
+
+#bgeigie-imports-table tr:hover {
+    background-color: #f8f9fa;
+}
+
+#bgeigie-imports-table td {
+    vertical-align: top;
+}
+
 /* Modal Styles */
 .modal {
     position: fixed;

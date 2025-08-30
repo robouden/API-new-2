@@ -19,3 +19,8 @@ def read_measurements(
 ):
     measurements = crud.get_measurements(db, skip=skip, limit=limit)
     return measurements
+
+@router.get("/count")
+def get_measurements_count(db: Session = Depends(get_db)):
+    count = crud.get_measurements_count(db)
+    return {"count": count}

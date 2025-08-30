@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>bGeigie Import - {{ import.name or "Import #" + import.id|string }}</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js" />
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', path='css/bgeigie-map.css') }}">
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <div class="row">
+            <div class="col-12">
+                <h1>bGeigie Import: {{ import.name or "Import #" + import.id|string }}</h1>
+                
+                <!-- Import Status -->
+                <div class="import-status {{ import.status }}">
+                    <strong>Status:</strong> {{ import.status.title() }}
+                    {% if import.approved %}
+                        - Approved by {{ import.approved_by }}
+                    {% elif import.rejected %}
+                        - Rejected: {{ import.rejected_by }}
+                    {% endif %}
+                </div>
+
+                <!-- Import Statistics -->
+                <div class="import-stats">
+                    <div class="stat-card">
+                        <span class="stat-value" id="total-measurements">{{ import.measurements_count or 0 }}</span>
+                        <div class="stat-label">Total Measurements</div>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value" id="avg-cpm">-</span>
+                        <div class="stat-label">Average CPM</div>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value" id="max-cpm">-</span>
+                        <div class="stat-label">Max CPM</div>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value" id="min-cpm">-</span>
+                        <div class="stat-label">Min CPM</div>
+                    </div>
+                </div>
+
+                <!-- Map Controls -->
+                <div class="map-controls">
+                    <button onclick="window.bgeigieMap.toggleHeatmap()" class="secondary">
+                        Toggle Heatmap
+                    </button>
+                    <button onclick="window.bgeigieMap.fitMapToBounds()">
+                        Fit to Data
+                    </button>
+                    <button onclick="exportData()" class="secondary">
+                        Export Data
+                    </button>
+                </div>
+
+                <!-- Map Container -->
+                <div id="import-map"></div>
+
+                <!-- Metadata Form (only show if import is processed but not approved) -->
+                {% if import.status == 'processed' and not import.approved and not import.rejected %}
+                <div class="metadata-form">
+                    <h3>Add Import Metadata</h3>
+                    <p>Please provide additional information about this radiation measurement drive:</p>
+                    
+                    <form id="metadata-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="cities">Cities/Locations Covered</label>
+                                <input type="text" id="cities" name="cities" 
+                                       placeholder="e.g., Tokyo, Shibuya, Harajuku" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="credits">Credits/Attribution</label>
+                                <input type="text" id="credits" name="credits" 
+                                       placeholder="Measurement team or organization" required>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="description">Description</label>
+                            <textarea id="description" name="description" 
+                                      placeholder="Describe the measurement drive, purpose, or any notable observations..."></textarea>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="subtype">Measurement Type</label>
+                                <select id="subtype" name="subtype">
+                                    <option value="">Select type...</option>
+                                    <option value="Drive">Mobile Drive</option>
+                                    <option value="Walk">Walking Survey</option>
+                                    <option value="Cosmic">Cosmic Ray Detection</option>
+                                    <option value="Fixed">Fixed Point</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="name">Import Name</label>
+                                <input type="text" id="name" name="name" 
+                                       value="{{ import.name or '' }}" 
+                                       placeholder="Give this import a descriptive name">
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="submit-metadata">
+                            Submit for Approval
+                        </button>
+                    </form>
+                </div>
+                {% endif %}
+
+                <!-- Import Details -->
+                <div class="row mt-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5>Import Information</h5>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>Uploaded:</strong> {{ import.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+                                <p><strong>Source File:</strong> {{ import.source }}</p>
+                                <p><strong>MD5 Hash:</strong> <code>{{ import.md5sum }}</code></p>
+                                <p><strong>User:</strong> {{ import.user.email }}</p>
+                                {% if import.lines_count %}
+                                <p><strong>Lines Processed:</strong> {{ import.lines_count }}</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {% if import.status == 'processed' %}
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5>Quality Metrics</h5>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>GPS Validity:</strong> 
+                                    <span class="badge {{ 'bg-success' if import.auto_apprv_gps_validity else 'bg-warning' }}">
+                                        {{ 'Good' if import.auto_apprv_gps_validity else 'Poor' }}
+                                    </span>
+                                </p>
+                                <p><strong>CPM Range Valid:</strong>
+                                    <span class="badge {{ 'bg-success' if import.auto_apprv_no_high_cpm else 'bg-warning' }}">
+                                        {{ 'Yes' if import.auto_apprv_no_high_cpm else 'High Values Detected' }}
+                                    </span>
+                                </p>
+                                <p><strong>No Zero CPM:</strong>
+                                    <span class="badge {{ 'bg-success' if import.auto_apprv_no_zero_cpm else 'bg-warning' }}">
+                                        {{ 'Yes' if import.auto_apprv_no_zero_cpm else 'Zero Values Found' }}
+                                    </span>
+                                </p>
+                                {% if import.would_auto_approve %}
+                                <div class="alert alert-success mt-2">
+                                    <small>This import meets auto-approval criteria</small>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom JS -->
+    <script src="{{ url_for('static', path='js/bgeigie-map.js') }}"></script>
+    
+    <script>
+        // Initialize map and load data when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize the map
+            window.bgeigieMap.init();
+            
+            // Load import data
+            const importId = {{ import.id|tojson }};
+            window.bgeigieMap.loadImportData(importId);
+            
+            // Handle metadata form submission
+            const metadataForm = document.getElementById('metadata-form');
+            if (metadataForm) {
+                metadataForm.addEventListener('submit', handleMetadataSubmit);
+            }
+        });
+
+        async function handleMetadataSubmit(event) {
+            event.preventDefault();
+            
+            const formData = new FormData(event.target);
+            const metadata = Object.fromEntries(formData.entries());
+            
+            try {
+                const response = await fetch('/bgeigie-imports/{{ import.id }}/metadata', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(metadata)
+                });
+                
+                if (response.ok) {
+                    alert('Metadata saved successfully! Import submitted for approval.');
+                    location.reload();
+                } else {
+                    throw new Error('Failed to save metadata');
+                }
+            } catch (error) {
+                console.error('Error saving metadata:', error);
+                alert('Failed to save metadata. Please try again.');
+            }
+        }
+
+        function exportData() {
+            window.open('/bgeigie-imports/{{ import.id }}/export', '_blank');
+        }
+    </script>
+</body>
+</html>

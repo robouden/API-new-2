@@ -31,10 +31,17 @@ class BGeigieImportCreate(BGeigieImportBase):
 class BGeigieImport(BGeigieImportBase):
     id: int
     user_id: int
-    md5sum: str
+    created_at: datetime
 
     class Config:
         from_attributes = True
+
+class BGeigieImportMetadata(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    cities: Optional[str] = None
+    credits: Optional[str] = None
+    subtype: Optional[str] = None
 
 class MeasurementBase(BaseModel):
     cpm: int
@@ -79,6 +86,20 @@ class DeviceStory(DeviceStoryBase):
     id: int
     user_id: int
     device_id: int
+
+    class Config:
+        from_attributes = True
+
+class DeviceStoryCommentBase(BaseModel):
+    content: str
+
+class DeviceStoryCommentCreate(DeviceStoryCommentBase):
+    pass
+
+class DeviceStoryComment(DeviceStoryCommentBase):
+    id: int
+    device_story_id: int
+    user_id: int
 
     class Config:
         from_attributes = True

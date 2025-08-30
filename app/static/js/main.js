@@ -196,13 +196,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const fetchImports = async () => {
         const importsTableBody = document.querySelector('#imports-table tbody');
         try {
-            const response = await fetch('/bgeigie_imports/', { headers: { 'Authorization': `Bearer ${token}` } });
+            const response = await fetch('/bgeigie-imports/', { headers: { 'Authorization': `Bearer ${token}` } });
             if (response.ok) {
                 const imports = await response.json();
                 importsTableBody.innerHTML = '';
                 imports.forEach(imp => {
                     const row = document.createElement('tr');
+                    row.style.cursor = 'pointer';
                     row.innerHTML = `<td>${imp.id}</td><td>${imp.source}</td><td>${imp.md5sum}</td>`;
+                    row.addEventListener('click', () => {
+                        window.open(`/bgeigie-imports/${imp.id}/detail`, '_blank');
+                    });
                     importsTableBody.appendChild(row);
                 });
             } else {
@@ -223,7 +227,7 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.append('file', file);
 
         try {
-            const response = await fetch('/bgeigie_imports/', {
+            const response = await fetch('/bgeigie-imports/', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` },
                 body: formData
@@ -367,25 +371,187 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const renderBGeigieImportsView = async () => {
         try {
-            const response = await fetch('/bgeigie_imports/', { headers: { 'Authorization': `Bearer ${token}` } });
-            if (!response.ok) throw new Error('Failed to fetch bGeigie imports');
+            const [importsRes, userRes] = await Promise.all([
+                fetch('/bgeigie-imports/', { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch('/users/users/me', { headers: { 'Authorization': `Bearer ${token}` } })
+            ]);
             
-            const imports = await response.json();
-            let tableHtml = `<h2>bGeigie Imports</h2>
-                <table id="bgeigie-imports-table">
-                    <thead>
-                        <tr><th>ID</th><th>Source</th><th>MD5 Sum</th></tr>
+            if (!importsRes.ok) throw new Error('Failed to fetch bGeigie imports');
+            if (!userRes.ok) throw new Error('Failed to fetch user data');
+            
+            const imports = await importsRes.json();
+            const currentUser = await userRes.json();
+            
+            let html = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>bGeigie Imports</h2>
+                    <button id="upload-btn" style="background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Upload</button>
+                </div>
+                
+                <div id="upload-section" style="display: none; margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa;">
+                    <h3>Upload bGeigie Log File</h3>
+                    <form id="bgeigie-upload-form">
+                        <input type="file" id="bgeigie-file-input" accept=".log" required style="margin-bottom: 10px;">
+                        <div>
+                            <button type="submit" style="background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Upload</button>
+                            <button type="button" id="cancel-upload" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <button class="filter-btn active" data-filter="all">All</button>
+                        <button class="filter-btn" data-filter="unprocessed">New</button>
+                        <button class="filter-btn" data-filter="processed">Processed</button>
+                        <button class="filter-btn" data-filter="submitted">Submitted</button>
+                        <button class="filter-btn" data-filter="approved">Approved</button>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="owner-filter-btn active" data-owner="yours">Yours</button>
+                        <button class="owner-filter-btn" data-owner="everyone">Everyone</button>
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 10px;">
+                    <span id="results-count">${imports.length} results.</span>
+                </div>
+                
+                <table id="bgeigie-imports-table" style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
+                    <thead style="background-color: #f5f5f5;">
+                        <tr>
+                            <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="id">ID ↕</th>
+                            <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="created_at">Uploaded At ↕</th>
+                            <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="user">User ↕</th>
+                            <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="source">File Name ↕</th>
+                            <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="measurements_count"># of Measurements ↕</th>
+                            <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="status">Status ↕</th>
+                            <th style="border: 1px solid #ddd; padding: 8px;">Comment</th>
+                        </tr>
                     </thead>
-                    <tbody>`;
-            imports.forEach(imp => {
-                tableHtml += `<tr><td>${imp.id}</td><td>${imp.source}</td><td>${imp.md5sum}</td></tr>`;
+                    <tbody id="imports-tbody">
+                    </tbody>
+                </table>
+            `;
+            
+            apiDocumentation.innerHTML = html;
+            
+            // Store imports data for filtering/sorting
+            window.importsData = imports;
+            window.currentUser = currentUser;
+            window.currentFilter = 'all';
+            window.currentOwner = 'yours';
+            window.sortField = 'id';
+            window.sortOrder = 'desc';
+            
+            // Add event listeners
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    window.currentFilter = e.target.dataset.filter;
+                    renderImportsTable();
+                });
             });
-            tableHtml += `</tbody></table>`;
-            apiDocumentation.innerHTML = tableHtml;
+            
+            document.querySelectorAll('.owner-filter-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.owner-filter-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    window.currentOwner = e.target.dataset.owner;
+                    renderImportsTable();
+                });
+            });
+            
+            document.querySelectorAll('th[data-sort]').forEach(th => {
+                th.addEventListener('click', (e) => {
+                    const field = e.target.dataset.sort;
+                    if (window.sortField === field) {
+                        window.sortOrder = window.sortOrder === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        window.sortField = field;
+                        window.sortOrder = 'desc';
+                    }
+                    renderImportsTable();
+                });
+            });
+            
+            renderImportsTable();
+            
         } catch (error) {
             console.error('Error rendering bGeigie imports view:', error);
             apiDocumentation.innerHTML = `<p>Error loading bGeigie imports.</p>`;
         }
+    };
+    
+    const renderImportsTable = () => {
+        const tbody = document.getElementById('imports-tbody');
+        if (!tbody || !window.importsData) return;
+        
+        let filteredImports = window.importsData;
+        
+        // Filter by ownership
+        if (window.currentOwner === 'yours') {
+            filteredImports = filteredImports.filter(imp => imp.user_id === window.currentUser.id);
+        }
+        
+        // Filter by status
+        if (window.currentFilter !== 'all') {
+            filteredImports = filteredImports.filter(imp => imp.status === window.currentFilter);
+        }
+        
+        // Sort
+        filteredImports.sort((a, b) => {
+            let aVal = a[window.sortField];
+            let bVal = b[window.sortField];
+            
+            if (window.sortField === 'created_at') {
+                aVal = new Date(aVal);
+                bVal = new Date(bVal);
+            }
+            
+            if (aVal < bVal) return window.sortOrder === 'asc' ? -1 : 1;
+            if (aVal > bVal) return window.sortOrder === 'asc' ? 1 : -1;
+            return 0;
+        });
+        
+        // Update results count
+        document.getElementById('results-count').textContent = `${filteredImports.length} results.`;
+        
+        // Render rows
+        tbody.innerHTML = '';
+        filteredImports.forEach(imp => {
+            const row = document.createElement('tr');
+            row.style.cursor = 'pointer';
+            row.style.borderBottom = '1px solid #ddd';
+            
+            const createdAt = new Date(imp.created_at || Date.now()).toLocaleDateString() + ' ' + 
+                             new Date(imp.created_at || Date.now()).toLocaleTimeString();
+            
+            const statusColor = {
+                'unprocessed': '#ffc107',
+                'processed': '#17a2b8', 
+                'submitted': '#007bff',
+                'approved': '#28a745',
+                'rejected': '#dc3545'
+            }[imp.status] || '#6c757d';
+            
+            row.innerHTML = `
+                <td style="border: 1px solid #ddd; padding: 8px; color: #007bff;">${imp.id}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; color: #007bff;">${createdAt}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; color: #007bff;">User ${imp.user_id}</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">${imp.source}</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">${imp.measurements_count || 0}<br><small>maximum cpm: ${imp.max_cpm || 'N/A'}</small></td>
+                <td style="border: 1px solid #ddd; padding: 8px; color: ${statusColor}; font-weight: bold;">${imp.status || 'unprocessed'}</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">${imp.description || ''}</td>
+            `;
+            
+            row.addEventListener('click', () => {
+                window.open(`/bgeigie-imports/${imp.id}/detail`, '_blank');
+            });
+            
+            tbody.appendChild(row);
+        });
     };
 
     const renderDevicesView = async () => {

@@ -1,7 +1,7 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import declarative_base, sessionmaker
 
-SQLALCHEMY_DATABASE_URL = "duckdb:///safecast.duckdb"
+SQLALCHEMY_DATABASE_URL = "duckdb:///safecast.db"
 
 Base = declarative_base()
 
