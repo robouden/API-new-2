@@ -595,16 +595,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td style="border: 1px solid #ddd; padding: 8px; color: ${statusColor}; font-weight: bold;">${imp.status || 'unprocessed'}</td>
                 <td style="border: 1px solid #ddd; padding: 8px;">${imp.description || ''}</td>
                 <td style="border: 1px solid #ddd; padding: 8px;">
-                    ${(imp.status === 'unprocessed' || imp.status === null || imp.status === undefined) ? 
-                        `<button class="btn btn-sm btn-primary" onclick="processImport(${imp.id}); event.stopPropagation();">Process</button>` : 
-                        ''}
-                    ${imp.status === 'submitted' ? 
-                        `<button class="btn btn-sm btn-success" onclick="approveImport(${imp.id}); event.stopPropagation();" style="margin-right: 5px;">Approve</button>
-                         <button class="btn btn-sm btn-danger" onclick="rejectImport(${imp.id}); event.stopPropagation();">Reject</button>` : 
-                        ''}
-                    ${imp.status === 'processed' ? 
-                        `<span style="color: #28a745; font-weight: bold;">Ready for metadata</span>` : 
-                        ''}
+                    <button class="btn btn-sm btn-primary" onclick="processImport(${imp.id}); event.stopPropagation();">Process</button>
                 </td>
             `;
             

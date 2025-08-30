@@ -211,12 +211,18 @@ def process_bgeigie_import(id: int, db: Session = Depends(get_db), current_user:
     if not db_import:
         raise HTTPException(status_code=404, detail="Import not found")
     
-    if not db_import.file_content:
-        raise HTTPException(status_code=400, detail="No file content to process")
+    # Read file content from disk
+    file_path = f"uploads/{db_import.source}"
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            decoded_content = f.read()
+    except FileNotFoundError:
+        raise HTTPException(status_code=400, detail="File not found on disk")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error reading file: {str(e)}")
     
     # Parse the file and create measurements
     try:
-        decoded_content = db_import.file_content.decode('utf-8')
         measurements_data = bgeigie_parser.parse_bgeigie_log(decoded_content)
         
         # Filter data to match the Measurement model
