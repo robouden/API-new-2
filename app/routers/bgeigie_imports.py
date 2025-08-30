@@ -23,15 +23,13 @@ def read_bgeigie_imports(
 
 @router.get("/{import_id}/detail", response_class=HTMLResponse)
 async def get_import_detail(
-    request: Request,
     import_id: int,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_active_user)
+    request: Request,
+    db: Session = Depends(get_db)
 ):
     """Display detailed view with map for a bGeigie import"""
     db_import = db.query(models.BGeigieImport).filter(
-        models.BGeigieImport.id == import_id,
-        models.BGeigieImport.user_id == current_user.id
+        models.BGeigieImport.id == import_id
     ).first()
     
     if not db_import:
@@ -46,37 +44,29 @@ async def get_import_detail(
 @router.get("/{import_id}/measurements")
 async def get_import_measurements(
     import_id: int,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_active_user)
+    db: Session = Depends(get_db)
 ):
     """Get measurement data for map visualization"""
     db_import = db.query(models.BGeigieImport).filter(
-        models.BGeigieImport.id == import_id,
-        models.BGeigieImport.user_id == current_user.id
+        models.BGeigieImport.id == import_id
     ).first()
     
     if not db_import:
         raise HTTPException(status_code=404, detail="Import not found")
     
-    # Get measurements from bgeigie_logs
-    measurements = db.query(models.BGeigieLog).filter(
-        models.BGeigieLog.bgeigie_import_id == import_id
+    # Get measurements from measurements table
+    measurements = db.query(models.Measurement).filter(
+        models.Measurement.bgeigie_import_id == import_id
     ).all()
     
     measurement_data = []
     for m in measurements:
-        # Convert NMEA coordinates to decimal degrees
-        lat = nmea_to_decimal(m.latitude_nmea, m.north_south_indicator)
-        lng = nmea_to_decimal(m.longitude_nmea, m.east_west_indicator)
-        
         measurement_data.append({
             "id": m.id,
             "cpm": m.cpm,
-            "latitude": lat,
-            "longitude": lng,
-            "captured_at": m.captured_at.isoformat(),
-            "gps_fix_indicator": m.gps_fix_indicator,
-            "altitude": m.altitude
+            "latitude": m.latitude,
+            "longitude": m.longitude,
+            "captured_at": m.captured_at.isoformat() if m.captured_at else "",
         })
     
     return {
@@ -102,8 +92,8 @@ async def update_import_metadata(
     if not db_import:
         raise HTTPException(status_code=404, detail="Import not found")
     
-    if db_import.status != "processed":
-        raise HTTPException(status_code=400, detail="Import must be processed before adding metadata")
+    if db_import.status not in ["processed", "unprocessed"]:
+        raise HTTPException(status_code=400, detail="Import must be processed or unprocessed to add metadata")
     
     # Update metadata fields
     for field, value in metadata.dict(exclude_unset=True).items():
@@ -174,7 +164,15 @@ async def create_bgeigie_import(
         ]
 
         if filtered_measurements:
+            # Create measurement records
             crud.create_measurements(db=db, measurements=filtered_measurements, bgeigie_import_id=db_bgeigie_import.id)
+            
+            # Update import with measurement count and max CPM
+            max_cpm = max([m['cpm'] for m in filtered_measurements]) if filtered_measurements else 0
+            db_bgeigie_import.measurements_count = len(filtered_measurements)
+            db_bgeigie_import.status = "processed"
+            db.commit()
+            db.refresh(db_bgeigie_import)
 
     except UnicodeDecodeError:
         raise HTTPException(status_code=400, detail="Invalid file encoding. Only UTF-8 is supported.")
@@ -204,3 +202,52 @@ def reject_bgeigie_import(id: int, db: Session = Depends(get_db), current_user: 
     if not db_import:
         raise HTTPException(status_code=404, detail="Import not found")
     return db_import
+
+@router.patch("/{id}/process")
+def process_bgeigie_import(id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_active_user)):
+    """Manually trigger processing of an uploaded bGeigie import"""
+    # Get the import record
+    db_import = db.query(models.BGeigieImport).filter(models.BGeigieImport.id == id).first()
+    if not db_import:
+        raise HTTPException(status_code=404, detail="Import not found")
+    
+    if not db_import.file_content:
+        raise HTTPException(status_code=400, detail="No file content to process")
+    
+    # Parse the file and create measurements
+    try:
+        decoded_content = db_import.file_content.decode('utf-8')
+        measurements_data = bgeigie_parser.parse_bgeigie_log(decoded_content)
+        
+        # Filter data to match the Measurement model
+        filtered_measurements = [
+            {
+                'cpm': m['cpm'],
+                'latitude': m['latitude'],
+                'longitude': m['longitude'],
+                'captured_at': m['captured_at'],
+            }
+            for m in measurements_data
+        ]
+
+        if filtered_measurements:
+            # Delete existing measurements for this import
+            db.query(models.Measurement).filter(models.Measurement.bgeigie_import_id == id).delete()
+            
+            # Create new measurement records
+            crud.create_measurements(db=db, measurements=filtered_measurements, bgeigie_import_id=id)
+            
+            # Update import with measurement count and status
+            db_import.measurements_count = len(filtered_measurements)
+            db_import.status = "processed"
+            db.commit()
+            db.refresh(db_import)
+            
+            return {"message": f"Successfully processed {len(filtered_measurements)} measurements", "import": db_import}
+        else:
+            raise HTTPException(status_code=400, detail="No valid measurements found in file")
+
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid file encoding. Only UTF-8 is supported.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse and process file: {e}")

@@ -165,9 +165,14 @@ document.addEventListener('DOMContentLoaded', () => {
             <table id="imports-table">
                 <thead>
                     <tr>
-                        <th data-column="id">ID</th>
-                        <th data-column="source">Source</th>
-                        <th data-column="md5sum">MD5 Sum</th>
+                        <th onclick="sortImports('id')">ID</th>
+                        <th onclick="sortImports('created_at')">Uploaded At</th>
+                        <th onclick="sortImports('user_id')">User</th>
+                        <th onclick="sortImports('source')">File Name</th>
+                        <th onclick="sortImports('measurements_count')">Measurements Count</th>
+                        <th onclick="sortImports('status')">Status</th>
+                        <th onclick="sortImports('description')">Comment</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -427,6 +432,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="measurements_count"># of Measurements ↕</th>
                             <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="status">Status ↕</th>
                             <th style="border: 1px solid #ddd; padding: 8px;">Comment</th>
+                            <th style="border: 1px solid #ddd; padding: 8px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="imports-tbody">
@@ -444,7 +450,51 @@ document.addEventListener('DOMContentLoaded', () => {
             window.sortField = 'id';
             window.sortOrder = 'desc';
             
-            // Add event listeners
+            // Add upload event listeners
+            document.getElementById('upload-btn').addEventListener('click', () => {
+                document.getElementById('upload-section').style.display = 'block';
+            });
+            
+            document.getElementById('cancel-upload').addEventListener('click', () => {
+                document.getElementById('upload-section').style.display = 'none';
+                document.getElementById('bgeigie-upload-form').reset();
+            });
+            
+            document.getElementById('bgeigie-upload-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const fileInput = document.getElementById('bgeigie-file-input');
+                const file = fileInput.files[0];
+                if (!file) { 
+                    alert('Please select a file.'); 
+                    return; 
+                }
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    const response = await fetch('/bgeigie-imports/', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: formData
+                    });
+                    if (response.ok) {
+                        alert('File uploaded successfully!');
+                        document.getElementById('upload-section').style.display = 'none';
+                        document.getElementById('bgeigie-upload-form').reset();
+                        // Refresh the imports view
+                        renderBGeigieImportsView();
+                    } else {
+                        const error = await response.json();
+                        alert(`Upload failed: ${error.detail}`);
+                    }
+                } catch (error) {
+                    console.error('Upload error:', error);
+                    alert('Upload failed: Network error');
+                }
+            });
+            
+            // Add filter event listeners
             document.querySelectorAll('.filter-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -544,10 +594,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td style="border: 1px solid #ddd; padding: 8px;">${imp.measurements_count || 0}<br><small>maximum cpm: ${imp.max_cpm || 'N/A'}</small></td>
                 <td style="border: 1px solid #ddd; padding: 8px; color: ${statusColor}; font-weight: bold;">${imp.status || 'unprocessed'}</td>
                 <td style="border: 1px solid #ddd; padding: 8px;">${imp.description || ''}</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">
+                    ${(imp.status === 'unprocessed' || imp.status === null || imp.status === undefined) ? 
+                        `<button class="btn btn-sm btn-primary" onclick="processImport(${imp.id}); event.stopPropagation();">Process</button>` : 
+                        ''}
+                    ${imp.status === 'submitted' ? 
+                        `<button class="btn btn-sm btn-success" onclick="approveImport(${imp.id}); event.stopPropagation();" style="margin-right: 5px;">Approve</button>
+                         <button class="btn btn-sm btn-danger" onclick="rejectImport(${imp.id}); event.stopPropagation();">Reject</button>` : 
+                        ''}
+                    ${imp.status === 'processed' ? 
+                        `<span style="color: #28a745; font-weight: bold;">Ready for metadata</span>` : 
+                        ''}
+                </td>
             `;
             
             row.addEventListener('click', () => {
-                window.open(`/bgeigie-imports/${imp.id}/detail`, '_blank');
+                window.location.href = `/bgeigie-imports/${imp.id}/detail`;
             });
             
             tbody.appendChild(row);
@@ -677,6 +739,92 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // Initial Load
-    fetchUserData();
+
+    // Process import function
+    window.processImport = async (importId) => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`/bgeigie-imports/${importId}/process`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                alert(`Successfully processed ${result.message}`);
+                // Refresh the imports list
+                if (window.location.hash === '#bgeigie-imports') {
+                    renderBGeigieImportsView();
+                }
+            } else {
+                const error = await response.json();
+                alert(`Error processing import: ${error.detail}`);
+            }
+        } catch (error) {
+            console.error('Error processing import:', error);
+            alert('Error processing import. Please try again.');
+        }
+    };
+
+    // Approve import function
+    window.approveImport = async (importId) => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`/bgeigie-imports/${importId}/approve`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (response.ok) {
+                alert('Import approved successfully!');
+                // Refresh the imports list
+                if (window.location.hash === '#bgeigie-imports') {
+                    renderBGeigieImportsView();
+                }
+            } else {
+                const error = await response.json();
+                alert(`Error approving import: ${error.detail}`);
+            }
+        } catch (error) {
+            console.error('Error approving import:', error);
+            alert('Error approving import. Please try again.');
+        }
+    };
+
+    // Reject import function
+    window.rejectImport = async (importId) => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`/bgeigie-imports/${importId}/reject`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (response.ok) {
+                alert('Import rejected successfully!');
+                // Refresh the imports list
+                if (window.location.hash === '#bgeigie-imports') {
+                    renderBGeigieImportsView();
+                }
+            } else {
+                const error = await response.json();
+                alert(`Error rejecting import: ${error.detail}`);
+            }
+        } catch (error) {
+            console.error('Error rejecting import:', error);
+            alert('Error rejecting import. Please try again.');
+        }
+    };
+
+    // Set up navigation
+    setupNavigation();
 });

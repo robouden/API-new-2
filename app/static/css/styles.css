@@ -123,37 +123,87 @@ main {
 }
 
 /* Filter buttons styling */
-.filter-btn, .owner-filter-btn {
-    background: #f8f9fa;
-    border: 1px solid #dee2e6;
-    padding: 6px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: all 0.2s;
+.filter-buttons {
+    margin-bottom: 20px;
 }
 
-.filter-btn:hover, .owner-filter-btn:hover {
-    background: #e9ecef;
+.filter-buttons .btn {
+    margin-right: 10px;
+    margin-bottom: 5px;
 }
 
-.filter-btn.active, .owner-filter-btn.active {
-    background: #007bff;
+.filter-buttons .btn.active {
+    background-color: #007bff;
     color: white;
-    border-color: #007bff;
 }
 
-/* Table styling improvements */
-#bgeigie-imports-table th {
-    user-select: none;
+/* bGeigie Imports table styling */
+.bgeigie-imports-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
 }
 
-#bgeigie-imports-table tr:hover {
+.bgeigie-imports-table th,
+.bgeigie-imports-table td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+.bgeigie-imports-table th {
+    background-color: #f8f9fa;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.bgeigie-imports-table th:hover {
+    background-color: #e9ecef;
+}
+
+.bgeigie-imports-table tbody tr {
+    cursor: pointer;
+}
+
+.bgeigie-imports-table tbody tr:hover {
     background-color: #f8f9fa;
 }
 
-#bgeigie-imports-table td {
-    vertical-align: top;
+.bgeigie-imports-table .status-new {
+    color: #007bff;
+}
+
+.bgeigie-imports-table .status-processed {
+    color: #28a745;
+}
+
+.bgeigie-imports-table .status-submitted {
+    color: #ffc107;
+}
+
+.bgeigie-imports-table .status-approved {
+    color: #17a2b8;
+}
+
+/* Custom tooltip styling */
+.custom-tooltip {
+    background: white !important;
+    border: 1px solid #ccc !important;
+    border-radius: 4px !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+    font-size: 12px !important;
+    line-height: 1.3 !important;
+    padding: 0 !important;
+}
+
+.custom-tooltip .leaflet-tooltip-content {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.measurement-tooltip {
+    min-width: 120px;
+    text-align: left;
 }
 
 /* Modal Styles */

@@ -20,23 +20,45 @@ class BGeigieMap {
         return this;
     }
 
-    // Get color based on CPM value (radiation level)
-    getCPMColor(cpm) {
-        if (cpm <= 30) return '#00ff00';      // Green: Normal background
-        if (cpm <= 50) return '#80ff00';      // Light green
-        if (cpm <= 100) return '#ffff00';     // Yellow: Elevated
-        if (cpm <= 200) return '#ff8000';     // Orange: High
-        if (cpm <= 500) return '#ff4000';     // Red-orange: Very high
-        if (cpm <= 1000) return '#ff0000';    // Red: Dangerous
-        return '#800080';                     // Purple: Extremely high
+    // Convert CPM to µSv/h using LND7317 tube conversion factor
+    cpmToMicroSvPerHour(cpm) {
+        return cpm / 334;
     }
 
-    // Get marker size based on CPM value
+    // Get color based on µSv/h value (radiation level) - detailed logarithmic scale
+    getCPMColor(cpm) {
+        const microSvPerHour = this.cpmToMicroSvPerHour(cpm);
+        
+        // Detailed logarithmic scale with 12 levels
+        if (microSvPerHour >= 100) return '#ffff00';       // Yellow: extreme (100+)
+        if (microSvPerHour >= 65.54) return '#ffff80';     // Light yellow: very extreme (65.54-100)
+        if (microSvPerHour >= 10) return '#ff8000';        // Orange: very high (10-65.54)
+        if (microSvPerHour >= 5) return '#ff4000';         // Red-orange: high (5-10)
+        if (microSvPerHour >= 1.65) return '#ff0000';      // Red: elevated high (1.65-5)
+        if (microSvPerHour >= 1.0) return '#ff0080';       // Red-magenta: moderate high (1.0-1.65)
+        if (microSvPerHour >= 0.43) return '#ff00ff';      // Magenta: moderate (0.43-1.0)
+        if (microSvPerHour >= 0.25) return '#8000ff';      // Purple: low-moderate (0.25-0.43)
+        if (microSvPerHour >= 0.14) return '#0080ff';      // Blue-cyan: elevated normal (0.14-0.25)
+        if (microSvPerHour >= 0.08) return '#00ffff';      // Cyan: normal (0.08-0.14)
+        if (microSvPerHour >= 0.03) return '#0000ff';      // Blue: low normal (0.03-0.08)
+        return '#000000';                                   // Black: very low (< 0.03)
+    }
+
+    // Get marker size based on µSv/h value - detailed logarithmic scale
     getMarkerSize(cpm) {
-        if (cpm <= 30) return 4;
-        if (cpm <= 100) return 6;
-        if (cpm <= 500) return 8;
-        return 10;
+        const microSvPerHour = this.cpmToMicroSvPerHour(cpm);
+        if (microSvPerHour >= 100) return 12;
+        if (microSvPerHour >= 65.54) return 11;
+        if (microSvPerHour >= 10) return 10;
+        if (microSvPerHour >= 5) return 9;
+        if (microSvPerHour >= 1.65) return 8;
+        if (microSvPerHour >= 1.0) return 7;
+        if (microSvPerHour >= 0.43) return 6;
+        if (microSvPerHour >= 0.25) return 5;
+        if (microSvPerHour >= 0.14) return 4;
+        if (microSvPerHour >= 0.08) return 4;
+        if (microSvPerHour >= 0.03) return 3;
+        return 3;
     }
 
     // Create radiation level legend
@@ -46,14 +68,19 @@ class BGeigieMap {
         legend.onAdd = function(map) {
             const div = L.DomUtil.create('div', 'radiation-legend');
             div.innerHTML = `
-                <h4>Radiation Levels (CPM)</h4>
-                <div class="legend-item"><span style="background: #00ff00"></span> 0-30 (Normal)</div>
-                <div class="legend-item"><span style="background: #80ff00"></span> 31-50 (Low)</div>
-                <div class="legend-item"><span style="background: #ffff00"></span> 51-100 (Elevated)</div>
-                <div class="legend-item"><span style="background: #ff8000"></span> 101-200 (High)</div>
-                <div class="legend-item"><span style="background: #ff4000"></span> 201-500 (Very High)</div>
-                <div class="legend-item"><span style="background: #ff0000"></span> 501-1000 (Dangerous)</div>
-                <div class="legend-item"><span style="background: #800080"></span> >1000 (Extreme)</div>
+                <h4>Radiation Levels (µSv/h)</h4>
+                <div class="legend-item"><span style="background: #ffff00"></span> ≥ 100 (Extreme)</div>
+                <div class="legend-item"><span style="background: #ffff80"></span> 65.54-100 (Very Extreme)</div>
+                <div class="legend-item"><span style="background: #ff8000"></span> 10-65.54 (Very High)</div>
+                <div class="legend-item"><span style="background: #ff4000"></span> 5-10 (High)</div>
+                <div class="legend-item"><span style="background: #ff0000"></span> 1.65-5 (Elevated High)</div>
+                <div class="legend-item"><span style="background: #ff0080"></span> 1.0-1.65 (Moderate High)</div>
+                <div class="legend-item"><span style="background: #ff00ff"></span> 0.43-1.0 (Moderate)</div>
+                <div class="legend-item"><span style="background: #8000ff"></span> 0.25-0.43 (Low-Moderate)</div>
+                <div class="legend-item"><span style="background: #0080ff"></span> 0.14-0.25 (Elevated Normal)</div>
+                <div class="legend-item"><span style="background: #00ffff"></span> 0.08-0.14 (Normal)</div>
+                <div class="legend-item"><span style="background: #0000ff"></span> 0.03-0.08 (Low Normal)</div>
+                <div class="legend-item"><span style="background: #000000; color: white;"></span> < 0.03 (Very Low)</div>
             `;
             return div;
         };
@@ -99,19 +126,36 @@ class BGeigieMap {
                     fillOpacity: 0.7
                 });
 
-                // Create popup with measurement details
-                const popupContent = `
-                    <div class="measurement-popup">
-                        <h5>Measurement Details</h5>
-                        <p><strong>CPM:</strong> ${measurement.cpm}</p>
-                        <p><strong>Location:</strong> ${measurement.latitude.toFixed(6)}, ${measurement.longitude.toFixed(6)}</p>
-                        <p><strong>Time:</strong> ${new Date(measurement.captured_at).toLocaleString()}</p>
-                        <p><strong>GPS Quality:</strong> ${measurement.gps_fix_indicator === 'A' ? 'Valid' : 'Invalid'}</p>
-                        ${measurement.altitude ? `<p><strong>Altitude:</strong> ${measurement.altitude}m</p>` : ''}
+                // Create tooltip for hover and popup for click
+                const microSvPerHour = this.cpmToMicroSvPerHour(measurement.cpm);
+                const capturedDate = new Date(measurement.captured_at);
+                
+                // Tooltip content for hover
+                const tooltipContent = `
+                    <div class="measurement-tooltip" style="background: white; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); font-size: 12px; line-height: 1.3;">
+                        <div style="position: relative;">
+                            <button onclick="this.parentElement.parentElement.parentElement.style.display='none'" style="position: absolute; top: -4px; right: -4px; background: #f0f0f0; border: 1px solid #ccc; width: 20px; height: 20px; border-radius: 2px; cursor: pointer; font-size: 14px; line-height: 1;">×</button>
+                            <strong>${microSvPerHour.toFixed(2)}µSv/h</strong><br>
+                            <strong>${measurement.cpm}CPM</strong><br>
+                            4SLog CPM<br>
+                            5Log CP5s<br>
+                            ${measurement.altitude || 0}m alt<br>
+                            ${measurement.heading || 0}° heading<br>
+                            ${capturedDate.getFullYear()}-${String(capturedDate.getMonth() + 1).padStart(2, '0')}-${String(capturedDate.getDate()).padStart(2, '0')}<br>
+                            ${String(capturedDate.getHours()).padStart(2, '0')}:${String(capturedDate.getMinutes()).padStart(2, '0')}:${String(capturedDate.getSeconds()).padStart(2, '0')} UTC
+                        </div>
                     </div>
                 `;
                 
-                marker.bindPopup(popupContent);
+                // Bind both tooltip (hover) and popup (click)
+                marker.bindTooltip(tooltipContent, {
+                    permanent: false,
+                    direction: 'top',
+                    offset: [0, -10],
+                    className: 'custom-tooltip'
+                });
+                
+                marker.bindPopup(tooltipContent);
                 marker.addTo(this.map);
                 this.markers.push(marker);
             }

@@ -209,17 +209,20 @@
             const metadata = Object.fromEntries(formData.entries());
             
             try {
+                const token = localStorage.getItem('token');
                 const response = await fetch('/bgeigie-imports/{{ import.id }}/metadata', {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
                     },
                     body: JSON.stringify(metadata)
                 });
                 
                 if (response.ok) {
                     alert('Metadata saved successfully! Import submitted for approval.');
-                    location.reload();
+                    // Redirect back to the imports list to see the updated status
+                    window.location.href = '/#bgeigie-imports';
                 } else {
                     throw new Error('Failed to save metadata');
                 }

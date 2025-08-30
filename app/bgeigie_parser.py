@@ -27,9 +27,15 @@ def ddm_to_dd(ddm: str, direction: str) -> float:
 def parse_bgeigie_log(content: str):
     """Parses the content of a bGeigie log file."""
     measurements = []
+    valid_headers = ['$BMRDD', '$BGRDD', '$BNRDD', '$BNXRDD', '$PNTDD', '$CZRDD']
+    
     for line in content.strip().split('\n'):
         line = line.strip()
-        if not line.startswith('$BNXRDD') or '*' not in line:
+        if not line or '*' not in line:
+            continue
+            
+        # Check if line starts with any valid bGeigie header
+        if not any(line.startswith(header) for header in valid_headers):
             continue
 
         parts = line.split('*')
@@ -46,19 +52,31 @@ def parse_bgeigie_log(content: str):
         fields = sentence.split(',')
 
         try:
+            # Parse timestamp - handle different formats
+            timestamp_str = fields[2]
+            if 'T' in timestamp_str:
+                # ISO format: 2024-11-22T07:17:00Z
+                captured_at = datetime.datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            else:
+                # Alternative format handling
+                try:
+                    captured_at = datetime.datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+                except ValueError:
+                    captured_at = datetime.datetime.now()
+            
             measurement = {
-                'device_id': int(fields[1]),
-                'captured_at': datetime.datetime.fromisoformat(fields[2].replace('Z', '+00:00')),
-                'cpm': int(fields[3]), # This is the 1-minute count
-                'cp5s': int(fields[4]), # This is the 5-second count
-                'total_count': int(fields[5]),
-                'cpm_validity': fields[6],
-                'latitude': ddm_to_dd(fields[7], fields[8]),
-                'longitude': ddm_to_dd(fields[9], fields[10]),
-                'altitude': float(fields[11]) if fields[11] else 0.0,
-                'gps_validity': fields[12],
-                'hdop': float(fields[13]) if fields[13] else 0.0,
-                'gps_fix_quality': int(fields[14]) if fields[14] else 0,
+                'device_id': int(fields[1]) if fields[1] else 0,
+                'captured_at': captured_at,
+                'cpm': int(fields[3]) if fields[3] else 0,
+                'cp5s': int(fields[4]) if len(fields) > 4 and fields[4] else 0,
+                'total_count': int(fields[5]) if len(fields) > 5 and fields[5] else 0,
+                'cpm_validity': fields[6] if len(fields) > 6 else 'V',
+                'latitude': ddm_to_dd(fields[7], fields[8]) if len(fields) > 8 else 0.0,
+                'longitude': ddm_to_dd(fields[9], fields[10]) if len(fields) > 10 else 0.0,
+                'altitude': float(fields[11]) if len(fields) > 11 and fields[11] else 0.0,
+                'gps_validity': fields[12] if len(fields) > 12 else 'V',
+                'hdop': float(fields[13]) if len(fields) > 13 and fields[13] else 0.0,
+                'gps_fix_quality': int(fields[14]) if len(fields) > 14 and fields[14] else 0,
             }
             measurements.append(measurement)
         except (ValueError, IndexError) as e:
