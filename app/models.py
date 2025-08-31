@@ -65,7 +65,7 @@ class Device(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     unit = Column(String)
     sensor = Column(String)
-    bgeigie_import_id = Column(Integer, ForeignKey("bgeigie_imports.id"))
+    bgeigie_import_id = Column(Integer, ForeignKey("bgeigie_imports.id"), nullable=True)
 
     bgeigie_import = relationship("BGeigieImport", back_populates="devices")
     device_stories = relationship("DeviceStory", back_populates="device")

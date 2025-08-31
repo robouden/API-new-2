@@ -65,18 +65,10 @@ def parse_bgeigie_log(content: str):
                     captured_at = datetime.datetime.now()
             
             measurement = {
-                'device_id': int(fields[1]) if fields[1] else 0,
                 'captured_at': captured_at,
                 'cpm': int(fields[3]) if fields[3] else 0,
-                'cp5s': int(fields[4]) if len(fields) > 4 and fields[4] else 0,
-                'total_count': int(fields[5]) if len(fields) > 5 and fields[5] else 0,
-                'cpm_validity': fields[6] if len(fields) > 6 else 'V',
                 'latitude': ddm_to_dd(fields[7], fields[8]) if len(fields) > 8 else 0.0,
                 'longitude': ddm_to_dd(fields[9], fields[10]) if len(fields) > 10 else 0.0,
-                'altitude': float(fields[11]) if len(fields) > 11 and fields[11] else 0.0,
-                'gps_validity': fields[12] if len(fields) > 12 else 'V',
-                'hdop': float(fields[13]) if len(fields) > 13 and fields[13] else 0.0,
-                'gps_fix_quality': int(fields[14]) if len(fields) > 14 and fields[14] else 0,
             }
             measurements.append(measurement)
         except (ValueError, IndexError) as e:

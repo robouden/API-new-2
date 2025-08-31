@@ -1,13 +1,47 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
-from .. import crud, models, schemas, bgeigie_parser
+from sqlalchemy import text
+from datetime import datetime
+from .. import crud, models, schemas
 from ..security import get_db, get_current_active_user, get_current_admin_user
+from .. import bgeigie_parser
+import os
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+
+def should_auto_approve(measurements: List[dict], max_cpm: int) -> bool:
+    """
+    Auto-approval logic based on quality thresholds matching official Safecast criteria.
+    """
+    # Quality thresholds for auto-approval
+    MIN_MEASUREMENTS = 100  # Minimum number of measurements
+    MAX_CPM_THRESHOLD = 10000  # Maximum reasonable CPM value
+    MIN_GPS_ACCURACY = 0.001  # Minimum GPS coordinate precision
+    
+    # Check minimum measurement count
+    if len(measurements) < MIN_MEASUREMENTS:
+        return False
+    
+    # Check for reasonable CPM values
+    if max_cpm > MAX_CPM_THRESHOLD:
+        return False
+    
+    # Check for GPS coordinate validity
+    valid_coordinates = 0
+    for m in measurements:
+        if (abs(m['latitude']) > 0.001 and abs(m['longitude']) > 0.001 and
+            -90 <= m['latitude'] <= 90 and -180 <= m['longitude'] <= 180):
+            valid_coordinates += 1
+    
+    # Require at least 90% valid GPS coordinates
+    if valid_coordinates / len(measurements) < 0.9:
+        return False
+    
+    return True
 
 
 @router.get("/", response_model=List[schemas.BGeigieImport])
@@ -171,6 +205,13 @@ async def create_bgeigie_import(
             max_cpm = max([m['cpm'] for m in filtered_measurements]) if filtered_measurements else 0
             db_bgeigie_import.measurements_count = len(filtered_measurements)
             db_bgeigie_import.status = "processed"
+            
+            # Auto-approval logic based on quality thresholds
+            if should_auto_approve(filtered_measurements, max_cpm):
+                db_bgeigie_import.status = "approved"
+                db_bgeigie_import.approved_at = datetime.utcnow()
+                db_bgeigie_import.approved_by = "auto-approval"
+            
             db.commit()
             db.refresh(db_bgeigie_import)
 
@@ -257,3 +298,56 @@ def process_bgeigie_import(id: int, db: Session = Depends(get_db), current_user:
         raise HTTPException(status_code=400, detail="Invalid file encoding. Only UTF-8 is supported.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to parse and process file: {e}")
+
+@router.delete("/{id}")
+def delete_bgeigie_import(
+    id: int, 
+    db: Session = Depends(get_db), 
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """Delete a bGeigie import and all associated measurements"""
+    print(f"Attempting to delete import {id} for user {current_user.id}")
+    
+    # Get the import record
+    db_import = db.query(models.BGeigieImport).filter(
+        models.BGeigieImport.id == id,
+        models.BGeigieImport.user_id == current_user.id
+    ).first()
+    
+    if not db_import:
+        print(f"Import {id} not found or not owned by user {current_user.id}")
+        raise HTTPException(status_code=404, detail="Import not found or not owned by user")
+    
+    try:
+        print(f"Deleting all related records for import {id}")
+        
+        # Delete measurements first (this is what's blocking the delete)
+        measurements_deleted = db.execute(text("DELETE FROM measurements WHERE bgeigie_import_id = :import_id"), {"import_id": id})
+        print(f"Deleted {measurements_deleted.rowcount} measurements")
+        
+        # Delete devices if any exist
+        devices_deleted = db.execute(text("DELETE FROM devices WHERE bgeigie_import_id = :import_id"), {"import_id": id})
+        print(f"Deleted {devices_deleted.rowcount} devices")
+        
+        # Delete bgeigie_logs if any exist
+        logs_deleted = db.execute(text("DELETE FROM bgeigie_logs WHERE bgeigie_import_id = :import_id"), {"import_id": id})
+        print(f"Deleted {logs_deleted.rowcount} bgeigie_logs")
+        
+        # Now delete the import record itself
+        db.delete(db_import)
+        db.commit()
+        print(f"Deleted import record {id}")
+        
+        # Try to delete the uploaded file
+        file_path = f"uploads/{db_import.source}"
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            print(f"Deleted file: {file_path}")
+        
+        print(f"Successfully deleted import {id}")
+        return {"message": "Import deleted successfully"}
+        
+    except Exception as e:
+        print(f"Error deleting import {id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete import: {str(e)}")

@@ -51,6 +51,7 @@ class MeasurementBase(BaseModel):
 class Measurement(MeasurementBase):
     id: int
     bgeigie_import_id: int
+    device_id: Optional[int] = None
     cpm: int
     latitude: float
     longitude: float
@@ -59,18 +60,32 @@ class Measurement(MeasurementBase):
     class Config:
         from_attributes = True
 
-class Device(BaseModel):
+class DeviceBase(BaseModel):
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    sensor: Optional[str] = None
+    unit: Optional[str] = None
+
+class DeviceCreate(DeviceBase):
+    pass
+
+class Device(DeviceBase):
     id: int
-    bgeigie_import_id: int
-    unit: str
-    sensor: str
+    created_at: datetime
+    updated_at: datetime
+    measurements_count: int
+    bgeigie_import_id: Optional[int] = None
 
     class Config:
         from_attributes = True
 
 class Token(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
 
 class TokenData(BaseModel):
     email: Optional[str] = None

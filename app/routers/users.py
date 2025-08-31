@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from .. import crud, models, schemas, email
 from ..security import (
     create_access_token,
+    create_refresh_token,
+    verify_refresh_token,
     get_current_active_user,
     get_current_admin_user,
     get_current_moderator_user,
@@ -60,7 +62,30 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
             headers={"WWW-Authenticate": "Bearer"},
         )
     access_token = create_access_token(data={"sub": user.email})
-    return {"access_token": access_token, "token_type": "bearer"}
+    refresh_token = create_refresh_token(data={"sub": user.email})
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+
+@router.post("/refresh", response_model=schemas.Token)
+async def refresh_access_token(refresh_request: schemas.RefreshTokenRequest, db: Session = Depends(get_db)):
+    email = verify_refresh_token(refresh_request.refresh_token)
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    user = crud.get_user_by_email(db, email=email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    access_token = create_access_token(data={"sub": user.email})
+    refresh_token = create_refresh_token(data={"sub": user.email})
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
 
 @router.get("/users/me", response_model=schemas.User)
 async def read_users_me(current_user: models.User = Depends(get_current_active_user)):

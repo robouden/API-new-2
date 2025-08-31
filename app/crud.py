@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 import hashlib
 import secrets
+from datetime import datetime
 from . import models, schemas, security
 
 def get_measurements(db: Session, skip: int = 0, limit: int = 1000):
@@ -12,6 +13,47 @@ def get_bgeigie_imports_by_user(db: Session, user_id: int, skip: int = 0, limit:
 
 def get_users(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.User).offset(skip).limit(limit).all()
+
+# Device CRUD operations
+def get_device(db: Session, device_id: int):
+    return db.query(models.Device).filter(models.Device.id == device_id).first()
+
+def get_devices(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(models.Device).offset(skip).limit(limit).all()
+
+def create_device(db: Session, device: schemas.DeviceCreate):
+    db_device = models.Device(
+        manufacturer=device.manufacturer,
+        model=device.model,
+        sensor=device.sensor,
+        unit=device.unit,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+        measurements_count=0
+    )
+    db.add(db_device)
+    db.commit()
+    db.refresh(db_device)
+    return db_device
+
+def update_device(db: Session, device_id: int, device_update: schemas.DeviceCreate):
+    db_device = db.query(models.Device).filter(models.Device.id == device_id).first()
+    if db_device:
+        db_device.manufacturer = device_update.manufacturer
+        db_device.model = device_update.model
+        db_device.sensor = device_update.sensor
+        db_device.unit = device_update.unit
+        db_device.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(db_device)
+    return db_device
+
+def delete_device(db: Session, device_id: int):
+    db_device = db.query(models.Device).filter(models.Device.id == device_id).first()
+    if db_device:
+        db.delete(db_device)
+        db.commit()
+    return db_device
 
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
@@ -45,7 +87,14 @@ def create_measurements(db: Session, measurements: list[dict], bgeigie_import_id
     
     db_measurements = []
     for i, measurement in enumerate(measurements):
-        db_measurement = models.Measurement(id=start_id + i, **measurement, bgeigie_import_id=bgeigie_import_id)
+        db_measurement = models.Measurement(
+            id=start_id + i, 
+            bgeigie_import_id=bgeigie_import_id,
+            cpm=measurement['cpm'],
+            latitude=measurement['latitude'],
+            longitude=measurement['longitude'],
+            captured_at=measurement['captured_at']
+        )
         db_measurements.append(db_measurement)
     
     db.add_all(db_measurements)

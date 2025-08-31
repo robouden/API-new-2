@@ -32,11 +32,66 @@
                 </ul>
             </aside>
             <main>
-                <h1>The Safecast API</h1>
-                <p>Query and add to the Safecast dataset with your own application.</p>
+                <div id="logged-out-content">
+                    <h1>The Safecast API</h1>
+                    <p>Query and add to the Safecast dataset with your own application.</p>
+                </div>
 
-                <div id="api-documentation">
-                    <!-- Logged-in user dashboard content will be injected here -->
+                <div id="logged-in-content" class="hidden">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h1>bGeigie Imports</h1>
+                        <button id="upload-btn" style="background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Upload</button>
+                    </div>
+                    
+                    <div id="upload-section" style="display: none; margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa;">
+                        <h3>Upload bGeigie Log File</h3>
+                        <form id="upload-form" enctype="multipart/form-data">
+                            <input type="file" id="file-input" name="file" accept=".log,.LOG" required style="margin-bottom: 10px;">
+                            <div>
+                                <button type="submit" style="background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Upload</button>
+                                <button type="button" id="cancel-upload" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                            <button class="filter-btn active" data-filter="all" style="padding: 5px 10px; border: 1px solid #ccc; background: #007bff; color: white; border-radius: 3px; cursor: pointer;">All</button>
+                            <button class="filter-btn" data-filter="unprocessed" style="padding: 5px 10px; border: 1px solid #ccc; background: white; color: #333; border-radius: 3px; cursor: pointer;">New</button>
+                            <button class="filter-btn" data-filter="processed" style="padding: 5px 10px; border: 1px solid #ccc; background: white; color: #333; border-radius: 3px; cursor: pointer;">Processed</button>
+                            <button class="filter-btn" data-filter="submitted" style="padding: 5px 10px; border: 1px solid #ccc; background: white; color: #333; border-radius: 3px; cursor: pointer;">Submitted</button>
+                            <button class="filter-btn" data-filter="approved" style="padding: 5px 10px; border: 1px solid #ccc; background: white; color: #333; border-radius: 3px; cursor: pointer;">Approved</button>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="owner-filter-btn active" data-owner="yours" style="padding: 5px 10px; border: 1px solid #ccc; background: #007bff; color: white; border-radius: 3px; cursor: pointer;">Yours</button>
+                            <button class="owner-filter-btn" data-owner="everyone" style="padding: 5px 10px; border: 1px solid #ccc; background: white; color: #333; border-radius: 3px; cursor: pointer;">Everyone</button>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 10px;">
+                        <span id="results-count">0 results.</span>
+                    </div>
+                    
+                    <div class="user-api-key" style="margin-bottom: 20px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                        <strong>Your API Key:</strong> <span id="user-api-key"></span>
+                    </div>
+                    
+                    <table id="imports-table" style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
+                        <thead style="background-color: #f5f5f5;">
+                            <tr>
+                                <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="id">ID ↕</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="created_at">Uploaded At ↕</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="user">User ↕</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="source">File Name ↕</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="measurements_count"># of Measurements ↕</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="status">Status ↕</th>
+                                <th style="border: 1px solid #ddd; padding: 8px;">Comment</th>
+                                <th style="border: 1px solid #ddd; padding: 8px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="imports-tbody">
+                        </tbody>
+                    </table>
                 </div>
 
                 <div id="static-api-docs">
