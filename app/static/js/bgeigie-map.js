@@ -147,15 +147,24 @@ class BGeigieMap {
                     </div>
                 `;
                 
-                // Bind both tooltip (hover) and popup (click)
+                // Bind an interactive, sticky tooltip for hover
                 marker.bindTooltip(tooltipContent, {
                     permanent: false,
                     direction: 'top',
                     offset: [0, -10],
-                    className: 'custom-tooltip'
+                    className: 'custom-tooltip',
+                    interactive: true,
+                    sticky: true
                 });
-                
-                marker.bindPopup(tooltipContent);
+
+                // Ensure tooltip opens/closes on hover explicitly
+                marker.on('mouseover', function () {
+                    this.openTooltip();
+                });
+                marker.on('mouseout', function () {
+                    this.closeTooltip();
+                });
+
                 marker.addTo(this.map);
                 this.markers.push(marker);
             }

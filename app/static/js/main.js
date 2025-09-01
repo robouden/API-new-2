@@ -806,16 +806,30 @@ const initializeBGeigieMap = async (importId) => {
                     fillOpacity: 0.7
                 });
                 
-                // Add popup with measurement details
-                const popupContent = `
-                    <strong>${microSvPerHour.toFixed(2)} µSv/h</strong><br>
-                    <strong>${cpm} CPM</strong><br>
-                    Lat: ${measurement.latitude.toFixed(6)}<br>
-                    Lng: ${measurement.longitude.toFixed(6)}<br>
-                    ${measurement.captured_at ? new Date(measurement.captured_at).toLocaleString() : ''}
+                // Add hover tooltip with measurement details
+                const tooltipContent = `
+                    <div class="measurement-tooltip" style="background: white; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); font-size: 12px; line-height: 1.3;">
+                        <strong>${microSvPerHour.toFixed(2)} µSv/h</strong><br>
+                        <strong>${cpm} CPM</strong><br>
+                        Lat: ${measurement.latitude.toFixed(6)}<br>
+                        Lng: ${measurement.longitude.toFixed(6)}<br>
+                        ${measurement.captured_at ? new Date(measurement.captured_at).toLocaleString() : ''}
+                    </div>
                 `;
-                
-                marker.bindPopup(popupContent);
+
+                marker.bindTooltip(tooltipContent, {
+                    permanent: false,
+                    direction: 'top',
+                    offset: [0, -10],
+                    className: 'custom-tooltip',
+                    interactive: true,
+                    sticky: true
+                });
+
+                // Ensure tooltip opens/closes on hover explicitly
+                marker.on('mouseover', function () { this.openTooltip(); });
+                marker.on('mouseout', function () { this.closeTooltip(); });
+
                 marker.addTo(map);
                 markers.push(marker);
             }
