@@ -76,13 +76,35 @@
                     <form id="metadata-form">
                         <div class="form-row">
                             <div class="form-group">
+                                <label for="name">Import Name</label>
+                                <input type="text" id="name" name="name" 
+                                       value="{{ import.name or '' }}" 
+                                       placeholder="Give this import a descriptive name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="subtype">Measurement Type</label>
+                                <select id="subtype" name="subtype" required>
+                                    <option value="">Select type...</option>
+                                    <option value="Drive" {{ 'selected' if import.subtype == 'Drive' else '' }}>Mobile Drive</option>
+                                    <option value="Walk" {{ 'selected' if import.subtype == 'Walk' else '' }}>Walking Survey</option>
+                                    <option value="Cosmic" {{ 'selected' if import.subtype == 'Cosmic' else '' }}>Cosmic Ray Detection</option>
+                                    <option value="Fixed" {{ 'selected' if import.subtype == 'Fixed' else '' }}>Fixed Point</option>
+                                    <option value="Other" {{ 'selected' if import.subtype == 'Other' else '' }}>Other</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
                                 <label for="cities">Cities/Locations Covered</label>
                                 <input type="text" id="cities" name="cities" 
+                                       value="{{ import.cities or '' }}"
                                        placeholder="e.g., Tokyo, Shibuya, Harajuku" required>
                             </div>
                             <div class="form-group">
                                 <label for="credits">Credits/Attribution</label>
                                 <input type="text" id="credits" name="credits" 
+                                       value="{{ import.credits or '' }}"
                                        placeholder="Measurement team or organization" required>
                             </div>
                         </div>
@@ -90,27 +112,7 @@
                         <div class="form-group">
                             <label for="description">Description</label>
                             <textarea id="description" name="description" 
-                                      placeholder="Describe the measurement drive, purpose, or any notable observations..."></textarea>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="subtype">Measurement Type</label>
-                                <select id="subtype" name="subtype">
-                                    <option value="">Select type...</option>
-                                    <option value="Drive">Mobile Drive</option>
-                                    <option value="Walk">Walking Survey</option>
-                                    <option value="Cosmic">Cosmic Ray Detection</option>
-                                    <option value="Fixed">Fixed Point</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="name">Import Name</label>
-                                <input type="text" id="name" name="name" 
-                                       value="{{ import.name or '' }}" 
-                                       placeholder="Give this import a descriptive name">
-                            </div>
+                                      placeholder="Describe the measurement drive, purpose, or any notable observations...">{{ import.description or '' }}</textarea>
                         </div>
                         
                         <button type="submit" class="submit-metadata">

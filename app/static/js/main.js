@@ -625,21 +625,40 @@ const renderBGeigieImportDetail = async (importId) => {
                 <form id="metadata-form" style="display: grid; gap: 15px;">
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                         <div>
+                            <label for="name" style="display: block; margin-bottom: 5px; font-weight: bold;">Import Name</label>
+                            <input type="text" id="name" name="name" placeholder="Give this import a descriptive name" required
+                                   value="${importData.name || ''}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <div>
+                            <label for="subtype" style="display: block; margin-bottom: 5px; font-weight: bold;">Measurement Type</label>
+                            <select id="subtype" name="subtype" required style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                <option value="">Select type...</option>
+                                <option value="Drive" ${importData.subtype === 'Drive' ? 'selected' : ''}>Mobile Drive</option>
+                                <option value="Walk" ${importData.subtype === 'Walk' ? 'selected' : ''}>Walking Survey</option>
+                                <option value="Cosmic" ${importData.subtype === 'Cosmic' ? 'selected' : ''}>Cosmic Ray Detection</option>
+                                <option value="Fixed" ${importData.subtype === 'Fixed' ? 'selected' : ''}>Fixed Point</option>
+                                <option value="Other" ${importData.subtype === 'Other' ? 'selected' : ''}>Other</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div>
                             <label for="cities" style="display: block; margin-bottom: 5px; font-weight: bold;">Cities/Locations Covered</label>
                             <input type="text" id="cities" name="cities" placeholder="e.g., Tokyo, Shibuya, Harajuku" required 
-                                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                   value="${importData.cities || ''}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                         </div>
                         <div>
                             <label for="credits" style="display: block; margin-bottom: 5px; font-weight: bold;">Credits/Attribution</label>
                             <input type="text" id="credits" name="credits" placeholder="Measurement team or organization" required
-                                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                   value="${importData.credits || ''}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                         </div>
                     </div>
                     
                     <div>
                         <label for="description" style="display: block; margin-bottom: 5px; font-weight: bold;">Description</label>
                         <textarea id="description" name="description" placeholder="Describe the measurement drive, purpose, or any notable observations..."
-                                  style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; height: 100px; resize: vertical;"></textarea>
+                                  style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; height: 100px; resize: vertical;">${importData.description || ''}</textarea>
                     </div>
                     
                     <button type="submit" style="background: #28a745; color: white; border: none; padding: 12px 24px; border-radius: 4px; cursor: pointer; font-size: 16px;">
@@ -854,7 +873,6 @@ window.exportData = (importId) => {
 
 // --- GLOBAL ACTION HANDLERS (for onclick) ---
 window.processImport = async (importId) => {
-    if (!confirm('Are you sure you want to process this import?')) return;
     try {
         const response = await fetch(`/bgeigie-imports/${importId}/process`, {
             method: 'PATCH',
@@ -875,7 +893,6 @@ window.processImport = async (importId) => {
 };
 
 window.approveImport = async (importId) => {
-    if (!confirm('Are you sure you want to approve this import?')) return;
     try {
         const response = await fetch(`/bgeigie-imports/${importId}/approve`, {
             method: 'PATCH',
@@ -896,7 +913,6 @@ window.approveImport = async (importId) => {
 };
 
 window.rejectImport = async (importId) => {
-    if (!confirm('Are you sure you want to reject this import?')) return;
     try {
         const response = await fetch(`/bgeigie-imports/${importId}/reject`, {
             method: 'PATCH',
@@ -917,7 +933,6 @@ window.rejectImport = async (importId) => {
 };
 
 window.deleteImport = async (importId) => {
-    if (!confirm('Are you sure you want to delete this import? This action cannot be undone.')) return;
     try {
         const response = await fetch(`/bgeigie-imports/${importId}`, {
             method: 'DELETE',

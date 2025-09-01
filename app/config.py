@@ -2,20 +2,18 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Email configuration
-    # IMPORTANT: Replace these placeholder values with your actual email provider's settings.
-    # For development, you can use a service like Mailtrap or Ethereal.
-    # For production, use a transactional email service like SendGrid, Mailgun, or AWS SES.
-    MAIL_USERNAME: str = "your-username"
-    MAIL_PASSWORD: str = "your-password"
-    MAIL_FROM: str = "noreply@safecast.org"
+    # SendGrid SMTP settings
+    MAIL_USERNAME: str = "apikey"
+    MAIL_PASSWORD: str = "your-sendgrid-api-key"
+    MAIL_FROM: str = "rob@yr-design.biz"
     MAIL_FROM_NAME: str = "Safecast API"
     MAIL_PORT: int = 587
-    MAIL_SERVER: str = "smtp.mailtrap.io"
+    MAIL_SERVER: str = "smtp.sendgrid.net"
     MAIL_STARTTLS: bool = True
     MAIL_SSL_TLS: bool = False
 
     # JWT Configuration
-    SECRET_KEY: str
+    SECRET_KEY: str = "your-secret-key-here-change-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
