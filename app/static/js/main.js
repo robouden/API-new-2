@@ -1,1058 +1,938 @@
-document.addEventListener('DOMContentLoaded', () => {
-    // State
-    let token = localStorage.getItem('token');
+/* eslint-disable no-unused-vars */
+/* global L */
 
-    // Elements
-    const authNav = document.getElementById('auth-nav');
-    const userInfo = document.getElementById('user-info');
-    const userEmailSpan = document.getElementById('user-email');
-    const logoutButton = document.getElementById('logout-button');
-    const loggedOutContent = document.getElementById('logged-out-content');
-    const loggedInContent = document.getElementById('logged-in-content');
-    const staticApiDocs = document.getElementById('static-api-docs');
-    const userApiKeySpan = document.getElementById('user-api-key');
-    
+// --- STATE MANAGEMENT ---
+document.addEventListener('DOMContentLoaded', () => {
+    initializeApp();
+});
+
+const initializeApp = async () => {
+    window.appState = {
+        token: localStorage.getItem('token'),
+        currentUser: null,
+        importsData: [],
+        currentFilter: 'all',
+        currentOwner: 'yours',
+        sortField: 'id',
+        sortOrder: 'desc',
+    };
+    setupEventListeners();
+    await fetchInitialData();
+    handleRouteChange(); // Render initial route
+};
+
+const setupEventListeners = () => {
     const loginModal = document.getElementById('login-modal');
     const signupModal = document.getElementById('signup-modal');
-    const loginForm = document.getElementById('login-form');
-    const signupForm = document.getElementById('signup-form');
 
-    // Modal triggers - check if elements exist first
+    // Modal event listeners with error handling
     const signinLink = document.getElementById('signin-link');
     const registerLink = document.getElementById('register-link');
     
-    if (signinLink) {
-        signinLink.addEventListener('click', () => loginModal.classList.remove('hidden'));
-    }
-    if (registerLink) {
-        registerLink.addEventListener('click', () => signupModal.classList.remove('hidden'));
-    }
-
-    // --- Modal Handling ---
-
-    // Function to close all modals
-    const closeAllModals = () => {
-        loginModal.classList.add('hidden');
-        signupModal.classList.add('hidden');
-    }
-
-    // Close button listeners
-    const loginCloseButton = loginModal.querySelector('.close-button');
-    if (loginCloseButton) {
-        loginCloseButton.addEventListener('click', () => {
-            loginModal.classList.add('hidden');
+    if (signinLink && loginModal) {
+        signinLink.addEventListener('click', (e) => { 
+            e.preventDefault(); 
+            loginModal.classList.remove('hidden'); 
         });
     }
-
-
-    const signupCloseButton = signupModal.querySelector('.close-button');
-    if (signupCloseButton) {
-        signupCloseButton.addEventListener('click', () => {
-            signupModal.classList.add('hidden');
+    
+    if (registerLink && signupModal) {
+        registerLink.addEventListener('click', (e) => { 
+            e.preventDefault(); 
+            signupModal.classList.remove('hidden'); 
         });
     }
+    
+    if (loginModal) {
+        const closeBtn = loginModal.querySelector('.close-button');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => loginModal.classList.add('hidden'));
+        }
+    }
+    
+    if (signupModal) {
+        const closeBtn = signupModal.querySelector('.close-button');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => signupModal.classList.add('hidden'));
+        }
+    }
 
-    // Click outside to close
     window.addEventListener('click', (event) => {
-        if (event.target === loginModal || event.target === signupModal) {
-            closeAllModals();
+        if (event.target === loginModal) {
+            loginModal.classList.add('hidden');
+        }
+        if (event.target === signupModal) {
+            signupModal.classList.add('hidden');
         }
     });
 
-    // UI update functions
-    const updateUIForLoggedIn = (user) => {
-        console.log('updateUIForLoggedIn called with user:', user);
-        
-        if (authNav) authNav.classList.add('hidden');
-        if (userInfo) userInfo.classList.remove('hidden');
-        if (userEmailSpan) userEmailSpan.textContent = user.email;
-        if (loggedOutContent) loggedOutContent.classList.add('hidden');
-        if (loggedInContent) loggedInContent.classList.remove('hidden');
-        if (staticApiDocs) staticApiDocs.classList.add('hidden');
-        
-        console.log('UI updated for logged in user');
-    };
+    // Form event listeners
+    const loginForm = document.getElementById('login-form');
+    const signupForm = document.getElementById('signup-form');
+    const logoutButton = document.getElementById('logout-button');
+    const uploadBtn = document.getElementById('upload-btn');
+    
+    if (loginForm) loginForm.addEventListener('submit', handleLogin);
+    if (signupForm) signupForm.addEventListener('submit', handleSignup);
+    if (logoutButton) logoutButton.addEventListener('click', handleLogout);
+    
+    if (uploadBtn) {
+        uploadBtn.addEventListener('click', () => {
+            if (window.location.hash !== '#bgeigie-imports') {
+                window.location.hash = '#bgeigie-imports';
+            }
+            setTimeout(() => {
+                const uploadSection = document.getElementById('upload-section');
+                if (uploadSection) uploadSection.style.display = 'block';
+            }, 100);
+        });
+    }
 
-    const updateUIForLoggedOut = () => {
-        authNav.classList.remove('hidden');
-        userInfo.classList.add('hidden');
-        loggedOutContent.classList.remove('hidden');
-        loggedInContent.classList.add('hidden');
-        staticApiDocs.classList.remove('hidden');
-        localStorage.removeItem('token');
-        token = null;
-    };
-
-    const showLoggedInDashboard = (user) => {
-        // Set API key
-        if (userApiKeySpan) {
-            userApiKeySpan.textContent = user.api_key;
-        }
-
-        // Setup upload form
-        const uploadForm = document.getElementById('upload-form');
-        if (uploadForm) {
-            uploadForm.addEventListener('submit', handleUpload);
-        }
-
-        // Load imports
-        fetchImports();
-    };
-
-    // API calls
-    const fetchUserData = async () => {
-        console.log('fetchUserData called, token:', token);
-        if (!token) {
-            console.log('No token found, updating UI for logged out');
-            updateUIForLoggedOut();
-            return;
-        }
-        try {
-            console.log('Fetching user data with token...');
-            const response = await fetch('/users/users/me', { headers: { 'Authorization': `Bearer ${token}` } });
-            console.log('User data response:', response.status, response.ok);
-            if (response.ok) {
-                const responseText = await response.text();
-                console.log('Raw response text:', responseText);
-                const user = JSON.parse(responseText);
-                console.log('Parsed user data:', user);
-                updateUIForLoggedIn(user);
-                
-                // Set API key in the dashboard
-                if (userApiKeySpan) {
-                    userApiKeySpan.textContent = user.api_key;
-                }
-                
-                // Setup modern dashboard functionality
-                setupModernDashboard();
-                
-                // Load user's imports
-                fetchImports();
+    // Sidebar navigation
+    document.querySelectorAll('aside a').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const hash = e.currentTarget.getAttribute('href');
+            if (window.location.hash !== hash) {
+                window.location.hash = hash;
             } else {
-                console.log('User data fetch failed, updating UI for logged out');
-                updateUIForLoggedOut();
+                handleRouteChange();
+            }
+        });
+    });
+};
+
+// --- AUTHENTICATION & DATA FETCHING ---
+const fetchInitialData = async () => {
+    if (window.appState.token) {
+        try {
+            const response = await fetch('/users/users/me', { headers: { 'Authorization': `Bearer ${window.appState.token}` } });
+            if (response.ok) {
+                window.appState.currentUser = await response.json();
+                updateUIForLoggedIn(window.appState.currentUser);
+            } else {
+                handleLogout();
             }
         } catch (error) {
             console.error('Error fetching user data:', error);
-            updateUIForLoggedOut();
+            handleLogout();
         }
-    };
-
-    const setupModernDashboard = () => {
-        // Setup upload button functionality
-        const uploadBtn = document.getElementById('upload-btn');
-        const uploadSection = document.getElementById('upload-section');
-        const cancelUpload = document.getElementById('cancel-upload');
-        const uploadForm = document.getElementById('upload-form');
-        
-        if (uploadBtn) {
-            uploadBtn.addEventListener('click', () => {
-                uploadSection.style.display = 'block';
-            });
-        }
-        
-        if (cancelUpload) {
-            cancelUpload.addEventListener('click', () => {
-                uploadSection.style.display = 'none';
-                uploadForm.reset();
-            });
-        }
-        
-        if (uploadForm) {
-            uploadForm.addEventListener('submit', handleUpload);
-        }
-        
-        // Setup filter buttons
-        document.querySelectorAll('.filter-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.filter-btn').forEach(b => {
-                    b.style.background = 'white';
-                    b.style.color = '#333';
-                    b.classList.remove('active');
-                });
-                e.target.style.background = '#007bff';
-                e.target.style.color = 'white';
-                e.target.classList.add('active');
-                window.currentFilter = e.target.dataset.filter;
-                renderImportsTable();
-            });
-        });
-        
-        document.querySelectorAll('.owner-filter-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.owner-filter-btn').forEach(b => {
-                    b.style.background = 'white';
-                    b.style.color = '#333';
-                    b.classList.remove('active');
-                });
-                e.target.style.background = '#007bff';
-                e.target.style.color = 'white';
-                e.target.classList.add('active');
-                window.currentOwner = e.target.dataset.owner;
-                renderImportsTable();
-            });
-        });
-        
-        // Setup table sorting
-        document.querySelectorAll('th[data-sort]').forEach(th => {
-            th.addEventListener('click', (e) => {
-                const field = e.target.dataset.sort;
-                if (window.sortField === field) {
-                    window.sortOrder = window.sortOrder === 'asc' ? 'desc' : 'asc';
-                } else {
-                    window.sortField = field;
-                    window.sortOrder = 'desc';
-                }
-                renderImportsTable();
-            });
-        });
-    };
-
-    const fetchImports = async () => {
-        try {
-            console.log('Fetching imports...');
-            const [importsRes, userRes] = await Promise.all([
-                fetch('/bgeigie-imports/', { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch('/users/users/me', { headers: { 'Authorization': `Bearer ${token}` } })
-            ]);
-            
-            if (importsRes.ok && userRes.ok) {
-                const imports = await importsRes.json();
-                const currentUser = await userRes.json();
-                console.log('Imports received:', imports);
-                
-                // Store data for filtering/sorting
-                window.importsData = imports;
-                window.currentUser = currentUser;
-                window.currentFilter = 'all';
-                window.currentOwner = 'yours';
-                window.sortField = 'id';
-                window.sortOrder = 'desc';
-                
-                renderImportsTable();
-            } else {
-                console.error('Failed to fetch imports:', importsRes.status);
-            }
-        } catch (error) {
-            console.error('Error fetching imports:', error);
-        }
-    };
+    } else {
+        updateUIForPublicView();
+    }
     
-    const renderImportsTable = () => {
-        const tbody = document.getElementById('imports-tbody');
-        if (!tbody || !window.importsData) return;
-        
-        let filteredImports = window.importsData;
-        
-        // Filter by ownership
-        if (window.currentOwner === 'yours') {
-            filteredImports = filteredImports.filter(imp => imp.user_id === window.currentUser.id);
+    // Add hash change listener
+    window.addEventListener('hashchange', handleRouteChange);
+};
+
+const handleLogin = async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    try {
+        const response = await fetch('/users/token', { method: 'POST', body: formData });
+        if (response.ok) {
+            const data = await response.json();
+            localStorage.setItem('token', data.access_token);
+            window.appState.token = data.access_token;
+            document.getElementById('login-modal').classList.add('hidden');
+            e.target.reset();
+            await fetchInitialData();
+        } else {
+            alert('Login failed: Invalid credentials');
         }
-        
-        // Filter by status
-        if (window.currentFilter !== 'all') {
-            filteredImports = filteredImports.filter(imp => imp.status === window.currentFilter);
-        }
-        
-        // Sort
-        filteredImports.sort((a, b) => {
-            let aVal = a[window.sortField];
-            let bVal = b[window.sortField];
-            
-            if (window.sortField === 'created_at') {
-                aVal = new Date(aVal);
-                bVal = new Date(bVal);
-            }
-            
-            if (aVal < bVal) return window.sortOrder === 'asc' ? -1 : 1;
-            if (aVal > bVal) return window.sortOrder === 'asc' ? 1 : -1;
-            return 0;
+    } catch (error) {
+        console.error('Login error:', error);
+        alert('Login failed: Network error');
+    }
+};
+
+const handleSignup = async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('signup-email').value;
+    const password = document.getElementById('signup-password').value;
+    try {
+        const response = await fetch('/users/users/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
         });
-        
-        // Update results count
-        const resultsCount = document.getElementById('results-count');
-        if (resultsCount) {
-            resultsCount.textContent = `${filteredImports.length} results.`;
+        if (response.ok) {
+            alert('Signup successful! Please log in.');
+            document.getElementById('signup-modal').classList.add('hidden');
+            e.target.reset();
+            document.getElementById('login-modal').classList.remove('hidden');
+        } else {
+            const error = await response.json();
+            alert(`Signup failed: ${error.detail}`);
         }
-        
-        // Render rows
-        tbody.innerHTML = '';
-        filteredImports.forEach(imp => {
-            const row = document.createElement('tr');
-            row.style.cursor = 'pointer';
-            row.style.borderBottom = '1px solid #ddd';
-            
-            const createdAt = new Date(imp.created_at || Date.now()).toLocaleDateString() + ' ' + 
-                             new Date(imp.created_at || Date.now()).toLocaleTimeString();
-            
-            const statusColor = {
-                'unprocessed': '#ffc107',
-                'processed': '#17a2b8', 
-                'submitted': '#007bff',
-                'approved': '#28a745',
-                'rejected': '#dc3545'
-            }[imp.status] || '#6c757d';
-            
-            row.innerHTML = `
-                <td style="border: 1px solid #ddd; padding: 8px; color: #007bff;">${imp.id}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; color: #007bff;">${createdAt}</td>
-                <td style="border: 1px solid #ddd; padding: 8px; color: #007bff;">User ${imp.user_id}</td>
-                <td style="border: 1px solid #ddd; padding: 8px;">${imp.source}</td>
-                <td style="border: 1px solid #ddd; padding: 8px;">${imp.measurements_count || 0}<br><small>maximum cpm: ${imp.max_cpm || 'N/A'}</small></td>
-                <td style="border: 1px solid #ddd; padding: 8px; color: ${statusColor}; font-weight: bold;">${imp.status || 'unprocessed'}</td>
-                <td style="border: 1px solid #ddd; padding: 8px;">${imp.description || ''}</td>
-                <td style="border: 1px solid #ddd; padding: 8px;">
-                    <button class="btn btn-sm btn-primary" onclick="processImport(${imp.id}); event.stopPropagation();" style="margin-right: 5px;">Process</button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteImport(${imp.id}); event.stopPropagation();">Delete</button>
-                </td>
-            `;
-            
-            row.addEventListener('click', () => {
-                window.location.href = `/bgeigie-imports/${imp.id}/detail`;
-            });
-            
-            tbody.appendChild(row);
-        });
+    } catch (error) {
+        console.error('Signup error:', error);
+        alert('Signup failed: Network error');
+    }
+};
+
+const handleLogout = () => {
+    localStorage.removeItem('token');
+    window.appState.token = null;
+    window.appState.currentUser = null;
+    updateUIForPublicView();
+    window.location.hash = '#';
+};
+
+// --- UI UPDATES ---
+const updateUIForLoggedIn = (user) => {
+    document.getElementById('auth-nav').classList.add('hidden');
+    document.getElementById('user-info').classList.remove('hidden');
+    document.getElementById('user-email').textContent = user.email;
+    document.getElementById('user-api-key').textContent = user.api_key;
+    document.getElementById('upload-btn-wrapper').classList.remove('hidden');
+};
+
+const updateUIForPublicView = () => {
+    document.getElementById('auth-nav').classList.remove('hidden');
+    document.getElementById('user-info').classList.add('hidden');
+    document.getElementById('upload-btn-wrapper').classList.add('hidden');
+};
+
+const updateActiveSidebarLink = (hash) => {
+    document.querySelectorAll('aside a').forEach(link => {
+        link.classList.toggle('active', link.getAttribute('href') === hash);
+    });
+};
+
+// --- ROUTING ---
+const handleRouteChange = () => {
+    const hash = window.location.hash || '#';
+    const main = document.querySelector('main');
+    main.innerHTML = '<div class="loader">Loading...</div>';
+
+    updateActiveSidebarLink(hash);
+
+    const isAuthenticated = !!window.appState.token;
+
+    if (hash.startsWith('#bgeigie-imports/') && hash.includes('/detail')) {
+        const importId = hash.split('/')[1];
+        renderBGeigieImportDetail(importId);
+        return;
+    }
+
+    const routes = {
+        '#': isAuthenticated ? renderBGeigieImportsView : renderPublicHomeView,
+        '#bgeigie-imports': isAuthenticated ? renderBGeigieImportsView : renderPublicBGeigieImportsView,
+        '#measurements': isAuthenticated ? () => renderGenericView('Measurements') : renderPublicMeasurementsView,
+        '#devices': isAuthenticated ? renderDevicesView : renderPublicDevicesView,
+        '#device-stories': isAuthenticated ? renderDeviceStoriesView : renderPublicDeviceStoriesView,
+        '#users': isAuthenticated ? renderUsersView : renderPublicUsersView,
+        '#radiation-index': isAuthenticated ? () => renderGenericView('Radiation Index') : renderPublicRadiationIndexView,
+        '#ingest-export': isAuthenticated ? () => renderGenericView('Ingest/Export') : renderPublicIngestExportView,
     };
 
-    const handleUpload = async (e) => {
-        e.preventDefault();
-        const fileInput = document.getElementById('file-input');
-        const file = fileInput.files[0];
-        if (!file) { 
-            alert('Please select a file.'); 
-            return; 
-        }
+    const routeHandler = routes[hash] || routes['#'];
+    routeHandler();
+};
 
-        const formData = new FormData();
-        formData.append('file', file);
+// --- VIEW RENDERING (AUTHENTICATED) ---
+const renderBGeigieImportsView = async () => {
+    const main = document.querySelector('main');
+    main.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1>bGeigie Imports</h1>
+        </div>
+        <div id="upload-section" style="display: none; margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa;">
+            <h3>Upload bGeigie Log File</h3>
+            <form id="upload-form" enctype="multipart/form-data">
+                <input type="file" id="file-input" name="file" accept=".log,.LOG" required style="margin-bottom: 10px;">
+                <div>
+                    <button type="submit" class="button-primary">Upload</button>
+                    <button type="button" id="cancel-upload" class="button-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+        <div id="imports-controls"></div>
+        <div id="imports-table-container"></div>
+    `;
 
-        try {
-            const response = await fetch('/bgeigie-imports/', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: formData
-            });
-            if (response.ok) {
-                alert('File uploaded successfully!');
-                fetchImports();
-                document.getElementById('upload-form').reset();
-            } else {
-                const error = await response.json();
-                alert(`Upload failed: ${error.detail}`);
+    document.getElementById('cancel-upload').addEventListener('click', () => document.getElementById('upload-section').style.display = 'none');
+    document.getElementById('upload-form').addEventListener('submit', handleUpload);
+
+    try {
+        const response = await fetch('/bgeigie-imports/', { headers: { 'Authorization': `Bearer ${window.appState.token}` } });
+        if (!response.ok) throw new Error('Failed to fetch imports');
+        window.appState.importsData = await response.json();
+        renderImportsTable();
+    } catch (error) {
+        console.error('Error fetching imports:', error);
+        main.querySelector('#imports-table-container').innerHTML = '<p>Error loading imports.</p>';
+    }
+};
+
+const renderDevicesView = async () => {
+    const main = document.querySelector('main');
+    try {
+        const response = await fetch('/devices/', { headers: { 'Authorization': `Bearer ${window.appState.token}` } });
+        if (!response.ok) throw new Error('Failed to fetch devices');
+        const devices = await response.json();
+        let tableHtml = `<h2>Devices</h2>
+            <table class="table"><thead><tr><th>ID</th><th>bGeigie Import ID</th><th>Unit</th><th>Sensor</th></tr></thead><tbody>`;
+        devices.forEach(device => {
+            tableHtml += `<tr><td>${device.id}</td><td>${device.bgeigie_import_id}</td><td>${device.unit}</td><td>${device.sensor}</td></tr>`;
+        });
+        tableHtml += `</tbody></table>`;
+        main.innerHTML = tableHtml;
+    } catch (error) {
+        console.error('Error rendering devices view:', error);
+        main.innerHTML = `<p>Error loading devices.</p>`;
+    }
+};
+
+const renderDeviceStoriesView = async () => {
+    const main = document.querySelector('main');
+    try {
+        const response = await fetch('/device_stories/', { headers: { 'Authorization': `Bearer ${window.appState.token}` } });
+        if (!response.ok) throw new Error('Failed to fetch device stories');
+        const stories = await response.json();
+        let html = `<h2>Device Stories</h2>`;
+        stories.forEach(story => {
+            html += `<div class="story"><h3>${story.title}</h3><p>${story.story}</p><small>By User ID: ${story.user_id}</small></div>`;
+        });
+        main.innerHTML = html;
+    } catch (error) {
+        console.error('Error rendering device stories view:', error);
+        main.innerHTML = `<p>Error loading device stories.</p>`;
+    }
+};
+
+const renderUsersView = async () => {
+    const main = document.querySelector('main');
+    try {
+        const [usersRes, currentUserRes] = await Promise.all([
+            fetch('/users/users/all', { headers: { 'Authorization': `Bearer ${window.appState.token}` } }),
+            fetch('/users/users/me', { headers: { 'Authorization': `Bearer ${window.appState.token}` } })
+        ]);
+
+        if (!usersRes.ok) throw new Error('Failed to fetch users');
+        if (!currentUserRes.ok) throw new Error('Failed to fetch current user');
+
+        const users = await usersRes.json();
+        const currentUser = await currentUserRes.json();
+
+        let tableHtml = `<h2>Users</h2>
+            <table class="table"><thead><tr><th>ID</th><th>Email</th><th>Is Active</th><th>Role</th><th>API Key</th>`;
+        if (currentUser.role === 'admin') tableHtml += `<th>Actions</th>`;
+        tableHtml += `</tr></thead><tbody>`;
+
+        users.forEach(user => {
+            tableHtml += `<tr>
+                <td>${user.id}</td><td>${user.email}</td><td>${user.is_active}</td><td>${user.role}</td><td>${user.api_key}</td>`;
+            if (currentUser.role === 'admin') {
+                tableHtml += `<td>
+                    <select class="role-select" data-user-id="${user.id}">
+                        <option value="user" ${user.role === 'user' ? 'selected' : ''}>User</option>
+                        <option value="moderator" ${user.role === 'moderator' ? 'selected' : ''}>Moderator</option>
+                        <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
+                    </select>
+                </td>`;
             }
-        } catch (error) {
-            console.error('Upload error:', error);
-        }
-    };
+            tableHtml += `</tr>`;
+        });
+        tableHtml += `</tbody></table>`;
+        main.innerHTML = tableHtml;
 
-    // Event Listeners
-    if (!loginForm) {
-        console.error('Login form not found!');
+        if (currentUser.role === 'admin') {
+            document.querySelectorAll('.role-select').forEach(select => {
+                select.addEventListener('change', handleRoleChange);
+            });
+        }
+    } catch (error) {
+        console.error('Error rendering users view:', error);
+        main.innerHTML = `<p>Error loading users.</p>`;
+    }
+};
+
+const renderGenericView = (title) => {
+    document.querySelector('main').innerHTML = `<h2>${title}</h2><p>Content for this section is not yet available.</p>`;
+};
+
+// --- VIEW RENDERING (PUBLIC) ---
+const renderPublicHomeView = () => {
+    document.querySelector('main').innerHTML = `
+        <h1>The Safecast API</h1>
+        <p>Query and add to the Safecast dataset with your own application.</p>
+        <p><strong>Browse public radiation data below, or <a href="#" id="signin-link-main">sign in</a> to upload your own measurements.</strong></p>
+        <h2>Public Data Access</h2>
+        <p>You can browse all approved radiation measurements without signing in.</p>`;
+    const mainSigninLink = document.getElementById('signin-link-main');
+    if (mainSigninLink) {
+        mainSigninLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('login-modal').classList.remove('hidden');
+        });
+    }
+};
+
+const renderPublicBGeigieImportsView = async () => {
+    const main = document.querySelector('main');
+    main.innerHTML = `
+        <h1>Public bGeigie Imports</h1>
+        <p>Showing all publicly approved bGeigie log file imports.</p>
+        <div id="imports-controls"></div>
+        <div id="imports-table-container"></div>
+    `;
+    try {
+        const response = await fetch('/bgeigie-imports/');
+        if (!response.ok) throw new Error('Failed to fetch public imports');
+        window.appState.importsData = await response.json();
+        window.appState.currentFilter = 'approved';
+        window.appState.currentOwner = 'everyone';
+        renderImportsTable();
+    } catch (error) {
+        console.error('Error fetching public imports:', error);
+        main.querySelector('#imports-table-container').innerHTML = '<p>Error loading public imports.</p>';
+    }
+};
+
+const renderPublicMeasurementsView = () => { document.querySelector('main').innerHTML = `<h1>Public Measurements</h1><p>Browse radiation measurements from approved bGeigie imports. <em>Sign in to upload your own measurements.</em></p>`; };
+const renderPublicDevicesView = () => { document.querySelector('main').innerHTML = `<h1>Public Devices</h1><p>View information about radiation detection devices. <em>Sign in to manage devices.</em></p>`; };
+const renderPublicDeviceStoriesView = () => { document.querySelector('main').innerHTML = `<h1>Public Device Stories</h1><p>Read stories and experiences from the Safecast community. <em>Sign in to share your own stories.</em></p>`; };
+const renderPublicUsersView = () => { document.querySelector('main').innerHTML = `<h1>Public Users</h1><p>View public information about Safecast community members. <em>Sign in to manage your profile.</em></p>`; };
+const renderPublicRadiationIndexView = () => { document.querySelector('main').innerHTML = `<h1>Radiation Index</h1><p>Browse radiation data by location and time. <em>Sign in to access advanced filtering options.</em></p>`; };
+const renderPublicIngestExportView = () => { document.querySelector('main').innerHTML = `<h1>Ingest Export</h1><p>Access data export and ingestion tools. <em>Sign in to upload and export data.</em></p>`; };
+
+// --- BGEIGIE IMPORTS TABLE & ACTIONS ---
+const renderImportsTable = () => {
+    const tableContainer = document.getElementById('imports-table-container');
+    const controlsContainer = document.getElementById('imports-controls');
+    if (!tableContainer || !controlsContainer) return;
+
+    const { importsData, currentUser, currentFilter, currentOwner, sortField, sortOrder } = window.appState;
+
+    if (currentUser) {
+        controlsContainer.innerHTML = `
+            <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
+                <button class="filter-btn ${currentFilter === 'all' ? 'active' : ''}" data-filter="all">All</button>
+                <button class="filter-btn ${currentFilter === 'unprocessed' ? 'active' : ''}" data-filter="unprocessed">New</button>
+                <button class="filter-btn ${currentFilter === 'processed' ? 'active' : ''}" data-filter="processed">Processed</button>
+                <button class="filter-btn ${currentFilter === 'submitted' ? 'active' : ''}" data-filter="submitted">Submitted</button>
+                <button class="filter-btn ${currentFilter === 'approved' ? 'active' : ''}" data-filter="approved">Approved</button>
+            </div>
+            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                <button class="owner-filter-btn ${currentOwner === 'yours' ? 'active' : ''}" data-owner="yours">Yours</button>
+                <button class="owner-filter-btn ${currentOwner === 'everyone' ? 'active' : ''}" data-owner="everyone">Everyone</button>
+            </div>
+        `;
+        document.querySelectorAll('.filter-btn').forEach(btn => btn.addEventListener('click', handleFilterClick));
+        document.querySelectorAll('.owner-filter-btn').forEach(btn => btn.addEventListener('click', handleOwnerFilterClick));
+    } else {
+        controlsContainer.innerHTML = '';
+    }
+
+    const filteredData = importsData.filter(imp => {
+        const statusFilter = currentFilter === 'all' || imp.status === currentFilter;
+        const ownerFilter = !currentUser || currentOwner === 'everyone' || imp.user_id === currentUser.id;
+        return statusFilter && ownerFilter;
+    });
+
+    const sortedData = [...filteredData].sort((a, b) => {
+        let valA = a[sortField];
+        let valB = b[sortField];
+        if (sortField === 'user') {
+            valA = a.user ? a.user.email : '';
+            valB = b.user ? b.user.email : '';
+        }
+        if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+        if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    tableContainer.innerHTML = `
+        <p>${sortedData.length} results.</p>
+        <table class="bgeigie-imports-table">
+        <thead><tr>
+            <th data-sort="id">ID ${sortField === 'id' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}</th>
+            <th data-sort="created_at">Uploaded At ${sortField === 'created_at' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}</th>
+            <th data-sort="user">User ${sortField === 'user' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}</th>
+            <th data-sort="source">File Name</th>
+            <th data-sort="measurements_count"># Measures</th>
+            <th data-sort="status">Status</th>
+            <th>Comment</th>
+            <th>Actions</th>
+        </tr></thead>
+        <tbody>
+            ${sortedData.map(imp => `
+                <tr>
+                    <td><a href="#bgeigie-imports/${imp.id}/detail" style="color: #007bff; text-decoration: none;">${imp.id}</a></td>
+                    <td>${new Date(imp.created_at).toLocaleDateString()} ${new Date(imp.created_at).toLocaleTimeString()}</td>
+                    <td>${imp.user_email || 'N/A'}</td>
+                    <td>${imp.source}</td>
+                    <td>${imp.measurements_count || 0}</td>
+                    <td><span class="status-${imp.status}">${imp.status}</span></td>
+                    <td>${imp.comment || ''}</td>
+                    <td class="actions">${getActions(imp)}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="8">No imports found.</td></tr>'}
+        </tbody></table>`;
+
+    tableContainer.querySelectorAll('th[data-sort]').forEach(th => th.addEventListener('click', handleSortClick));
+};
+
+const getActions = (imp) => {
+    const { currentUser } = window.appState;
+    if (!currentUser) return '';
+
+    const isOwner = imp.user_id === currentUser.id;
+    const isAdmin = currentUser.role === 'admin';
+    let actions = '';
+
+    if (imp.status === 'unprocessed' && (isOwner || isAdmin)) {
+        actions += `<button class="button-action" onclick="processImport(${imp.id})">Process</button>`;
+    }
+    if (imp.status === 'submitted' && isAdmin) {
+        actions += `<button class="button-success" onclick="approveImport(${imp.id})">Approve</button> `;
+        actions += `<button class="button-warning" onclick="rejectImport(${imp.id})">Reject</button>`;
+    }
+    if (isOwner || isAdmin) {
+        actions += `<button class="button-danger" onclick="deleteImport(${imp.id})">Delete</button>`;
+    }
+    return actions;
+};
+
+const handleFilterClick = (e) => {
+    window.appState.currentFilter = e.target.dataset.filter;
+    renderImportsTable();
+};
+
+const handleOwnerFilterClick = (e) => {
+    window.appState.currentOwner = e.target.dataset.owner;
+    renderImportsTable();
+};
+
+const handleSortClick = (e) => {
+    const field = e.currentTarget.dataset.sort;
+    if (window.appState.sortField === field) {
+        window.appState.sortOrder = window.appState.sortOrder === 'asc' ? 'desc' : 'asc';
+    } else {
+        window.appState.sortField = field;
+        window.appState.sortOrder = 'desc';
+    }
+    renderImportsTable();
+};
+
+const handleUpload = async (e) => {
+    e.preventDefault();
+    const fileInput = document.getElementById('file-input');
+    const file = fileInput.files[0];
+    if (!file) { return alert('Please select a file.'); }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch('/bgeigie-imports/', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${window.appState.token}` },
+            body: formData
+        });
+        if (response.ok) {
+            const newImport = await response.json();
+            alert('File uploaded successfully!');
+            document.getElementById('upload-section').style.display = 'none';
+            document.getElementById('upload-form').reset();
+            window.location.hash = `#bgeigie-imports/${newImport.id}/detail`;
+        } else {
+            const error = await response.json();
+            alert(`Upload failed: ${error.detail}`);
+        }
+    } catch (error) {
+        console.error('Upload error:', error);
+        alert('Upload failed: Network error');
+    }
+};
+
+const handleRoleChange = async (e) => {
+    const userId = e.target.dataset.userId;
+    const newRole = e.target.value;
+    try {
+        const response = await fetch(`/users/${userId}/role`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${window.appState.token}`
+            },
+            body: JSON.stringify({ role: newRole })
+        });
+        if (response.ok) {
+            alert('User role updated successfully!');
+        } else {
+            const error = await response.json();
+            alert(`Failed to update role: ${error.detail}`);
+            renderUsersView(); // Re-render to show original role
+        }
+    } catch (error) {
+        console.error('Error updating user role:', error);
+        alert('Failed to update user role.');
+    }
+};
+
+const renderBGeigieImportDetail = async (importId) => {
+    const main = document.querySelector('main');
+    
+    try {
+        // Fetch import data directly from API instead of HTML template
+        const response = await fetch(`/bgeigie-imports/${importId}`);
+        if (!response.ok) throw new Error('Failed to fetch import details');
+        const importData = await response.json();
+        
+        // Render the SPA-compatible layout
+        main.innerHTML = `
+            <h1>bGeigie Import: Import #${importData.id}</h1>
+            
+            <div class="import-status ${importData.status}" style="background: #d4edda; padding: 10px; margin: 15px 0; border-radius: 4px;">
+                <strong>Status: ${importData.status.charAt(0).toUpperCase() + importData.status.slice(1)}</strong>
+            </div>
+
+            <div class="import-stats" style="display: flex; gap: 20px; margin: 20px 0;">
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; text-align: center; min-width: 120px;">
+                    <div style="font-size: 24px; font-weight: bold; color: #007bff;" id="total-measurements">${importData.measurements_count || 0}</div>
+                    <div style="font-size: 12px; color: #666;">TOTAL MEASUREMENTS</div>
+                </div>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; text-align: center; min-width: 120px;">
+                    <div style="font-size: 24px; font-weight: bold; color: #007bff;" id="avg-cpm">-</div>
+                    <div style="font-size: 12px; color: #666;">AVERAGE CPM</div>
+                </div>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; text-align: center; min-width: 120px;">
+                    <div style="font-size: 24px; font-weight: bold; color: #007bff;" id="max-cpm">-</div>
+                    <div style="font-size: 12px; color: #666;">MAX CPM</div>
+                </div>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; text-align: center; min-width: 120px;">
+                    <div style="font-size: 24px; font-weight: bold; color: #007bff;" id="min-cpm">-</div>
+                    <div style="font-size: 12px; color: #666;">MIN CPM</div>
+                </div>
+            </div>
+
+            <div style="margin: 20px 0;">
+                <button onclick="toggleHeatmap()" style="background: #6c757d; color: white; border: none; padding: 8px 16px; margin-right: 10px; border-radius: 4px; cursor: pointer;">Toggle Heatmap</button>
+                <button onclick="fitToData()" style="background: #007bff; color: white; border: none; padding: 8px 16px; margin-right: 10px; border-radius: 4px; cursor: pointer;">Fit to Data</button>
+                <button onclick="exportData(${importData.id})" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Export Data</button>
+            </div>
+
+            <div id="import-map" style="height: 500px; width: 100%; border: 1px solid #ddd; border-radius: 4px; margin: 20px 0;"></div>
+
+            ${importData.status === 'processed' || importData.status === 'approved' ? `
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 4px; margin: 20px 0;">
+                <h3>Add Import Metadata</h3>
+                <p>Please provide additional information about this radiation measurement drive:</p>
+                
+                <form id="metadata-form" style="display: grid; gap: 15px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div>
+                            <label for="cities" style="display: block; margin-bottom: 5px; font-weight: bold;">Cities/Locations Covered</label>
+                            <input type="text" id="cities" name="cities" placeholder="e.g., Tokyo, Shibuya, Harajuku" required 
+                                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <div>
+                            <label for="credits" style="display: block; margin-bottom: 5px; font-weight: bold;">Credits/Attribution</label>
+                            <input type="text" id="credits" name="credits" placeholder="Measurement team or organization" required
+                                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label for="description" style="display: block; margin-bottom: 5px; font-weight: bold;">Description</label>
+                        <textarea id="description" name="description" placeholder="Describe the measurement drive, purpose, or any notable observations..."
+                                  style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; height: 100px; resize: vertical;"></textarea>
+                    </div>
+                    
+                    <button type="submit" style="background: #28a745; color: white; border: none; padding: 12px 24px; border-radius: 4px; cursor: pointer; font-size: 16px;">
+                        Submit for Approval
+                    </button>
+                </form>
+            </div>
+            ` : ''}
+        `;
+        
+        // Load Leaflet CSS and JS if not already loaded
+        if (!document.querySelector('link[href*="leaflet"]')) {
+            const leafletCSS = document.createElement('link');
+            leafletCSS.rel = 'stylesheet';
+            leafletCSS.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+            document.head.appendChild(leafletCSS);
+        }
+        
+        // Load Leaflet JS and heat plugin
+        const loadScript = (src) => {
+            return new Promise((resolve, reject) => {
+                if (document.querySelector(`script[src="${src}"]`)) {
+                    resolve();
+                    return;
+                }
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        };
+        
+        await loadScript('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js');
+        await loadScript('https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js');
+        
+        // Set up metadata form handler
+        const metadataForm = document.getElementById('metadata-form');
+        if (metadataForm) {
+            metadataForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const metadata = Object.fromEntries(formData.entries());
+                
+                try {
+                    const response = await fetch(`/bgeigie-imports/${importId}/metadata`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${window.appState.token}`
+                        },
+                        body: JSON.stringify(metadata)
+                    });
+                    
+                    if (response.ok) {
+                        alert('Metadata saved successfully! Import submitted for approval.');
+                        window.location.hash = '#bgeigie-imports';
+                    } else {
+                        throw new Error('Failed to save metadata');
+                    }
+                } catch (error) {
+                    console.error('Error saving metadata:', error);
+                    alert('Failed to save metadata. Please try again.');
+                }
+            });
+        }
+        
+        // Initialize the map after scripts are loaded
+        setTimeout(() => {
+            initializeBGeigieMap(importId);
+        }, 100);
+        
+    } catch (error) {
+        console.error(`Error fetching import detail for ${importId}:`, error);
+        main.innerHTML = `<p>Error loading import details.</p>`;
+    }
+};
+
+// Initialize bGeigie map for import detail view
+const initializeBGeigieMap = async (importId) => {
+    if (typeof L === 'undefined') {
+        console.error('Leaflet not loaded');
         return;
     }
     
-    loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const formData = new FormData(loginForm);
-
-        try {
-            const response = await fetch('/users/token', { method: 'POST', body: formData });
-            if (response.ok) {
-                const data = await response.json();
-                token = data.access_token;
-                localStorage.setItem('token', token);
-                
-                // Close the login modal
-                closeAllModals();
-                
-                // Clear the form
-                loginForm.reset();
-                
-                // Fetch user data and update UI
-                await fetchUserData();
-            } else {
-                const errorData = await response.json();
-                alert(`Login failed: ${errorData.detail || 'Unknown error'}`);
-            }
-        } catch (error) {
-            console.error('Login error:', error);
-            alert('Login failed: Network error');
-        }
-    });
-
-    signupForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = document.getElementById('signup-email').value;
-        const password = document.getElementById('signup-password').value;
-        try {
-            const response = await fetch('/users/users/', { 
-                method: 'POST', 
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password })
-            });
-            if (response.ok) {
-                alert('Signup successful! Please log in.');
-                signupModal.classList.add('hidden');
-                loginModal.classList.remove('hidden');
-            } else {
-                const error = await response.json();
-                alert(`Signup failed: ${error.detail}`);
-            }
-        } catch (error) {
-            console.error('Signup error:', error);
-        }
-    });
-
-    logoutButton.addEventListener('click', updateUIForLoggedOut);
-
-    // Sidebar navigation
-    const sidebarLinks = document.querySelectorAll('aside ul li a');
-    sidebarLinks.forEach(link => {
-        link.addEventListener('click', (e) => {
-            e.preventDefault();
-            const section = e.target.textContent.trim();
-            renderContent(section);
-
-            // Update active link
-            sidebarLinks.forEach(l => l.classList.remove('active'));
-            e.target.classList.add('active');
-        });
-    });
-
-
-    const fetchDashboardContent = (user) => {
-        const mainContent = document.querySelector('main');
-        if (mainContent) {
-            mainContent.innerHTML = `
-                <h3>Your API Key: <code>${user.api_key}</code></h3>
-
-                <h2>Upload bGeigie Log File</h2>
-                <form id="upload-form">
-                    <input type="file" id="file-input" accept=".log" required>
-                    <button type="submit">Upload</button>
-                </form>
-
-                <h2>Your Imports</h2>
-                <table id="imports-table">
-                    <thead>
-                        <tr>
-                            <th onclick="sortImports('id')">ID</th>
-                            <th onclick="sortImports('created_at')">Uploaded At</th>
-                            <th onclick="sortImports('user_id')">User</th>
-                            <th onclick="sortImports('source')">File Name</th>
-                            <th onclick="sortImports('measurements_count')">Measurements Count</th>
-                            <th onclick="sortImports('status')">Status</th>
-                            <th onclick="sortImports('description')">Comment</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    </tbody>
-                </table>
-            `;
-
-            // Add event listeners for the new elements
-            document.getElementById('upload-form').addEventListener('submit', handleUpload);
-            document.querySelectorAll('#imports-table th').forEach((header, index) => {
-                header.addEventListener('click', () => {
-                    const currentOrder = header.dataset.order || 'desc';
-                    const newOrder = currentOrder === 'asc' ? 'desc' : 'asc';
-                    header.dataset.order = newOrder;
-                    sortTable(index, newOrder);
-                });
-            });
-
-            fetchImports();
-        }
-    };
-
-
-    const sortTable = (columnIndex, order) => {
-        const importsTableBody = document.querySelector('#imports-table tbody');
-        const rows = Array.from(importsTableBody.querySelectorAll('tr'));
-        const sortedRows = rows.sort((a, b) => {
-            const aText = a.children[columnIndex].textContent.trim();
-            const bText = b.children[columnIndex].textContent.trim();
-            const aValue = isNaN(parseFloat(aText)) ? aText : parseFloat(aText);
-            const bValue = isNaN(parseFloat(bText)) ? bText : parseFloat(bText);
-            if (aValue < bValue) return order === 'asc' ? -1 : 1;
-            if (aValue > bValue) return order === 'asc' ? 1 : -1;
-            return 0;
-        });
-        importsTableBody.innerHTML = '';
-        sortedRows.forEach(row => importsTableBody.appendChild(row));
-    };
-
-    const renderContent = async (section) => {
-        if (!token) return; // Do nothing if not logged in
-
-        // Preserve the user object from the initial login
-        const response = await fetch('/users/users/me', { headers: { 'Authorization': `Bearer ${token}` } });
-        if (!response.ok) {
-            updateUIForLoggedOut();
-            return;
-        }
-        const user = await response.json();
-
-        const mainContent = document.querySelector('main');
-        if (!mainContent) return;
-
-        switch (section) {
-            case 'Safecast API':
-                fetchDashboardContent(user);
-                break;
-            case 'Users':
-                await renderUsersView();
-                break;
-            case 'Measurements':
-                await renderMeasurementsView();
-                break;
-            case 'Devices':
-                await renderDevicesView();
-                break;
-            case 'bGeigie Imports':
-                await renderBGeigieImportsView();
-                break;
-            case 'Device Stories':
-                await renderDeviceStoriesView();
-                break;
-            default:
-                mainContent.innerHTML = `<h2>${section}</h2><p>Content for this section is not yet available.</p>`;
-                break;
-        }
-    };
-
-    const renderDeviceStoriesView = async () => {
-        try {
-            // Fetch stories and devices
-            const [storiesRes, devicesRes] = await Promise.all([
-                fetch('/device_stories/', { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch('/devices/', { headers: { 'Authorization': `Bearer ${token}` } })
-            ]);
-
-            if (!storiesRes.ok) throw new Error('Failed to fetch device stories');
-            if (!devicesRes.ok) throw new Error('Failed to fetch devices');
-
-            const stories = await storiesRes.json();
-            const devices = await devicesRes.json();
-
-            // Form for creating a new story
-            let formHtml = `<h2>Create a New Device Story</h2>
-                <form id="create-story-form">
-                    <select id="story-device-id" required>
-                        <option value="">Select a Device</option>`;
-            devices.forEach(device => {
-                formHtml += `<option value="${device.id}">Device ID: ${device.id} (Unit: ${device.unit})</option>`;
-            });
-            formHtml += `</select>
-                    <input type="text" id="story-title" placeholder="Story Title" required>
-                    <textarea id="story-content" placeholder="Your Story" required></textarea>
-                    <button type="submit">Create Story</button>
-                </form>`;
-
-            // Table of existing stories
-            let tableHtml = `<h2>Device Stories</h2>
-                <table id="device-stories-table">
-                    <thead>
-                        <tr><th>ID</th><th>Title</th><th>Device ID</th></tr>
-                    </thead>
-                    <tbody>`;
-            stories.forEach(story => {
-                tableHtml += `<tr><td>${story.id}</td><td>${story.title}</td><td>${story.device_id}</td></tr>`;
-            });
-            tableHtml += `</tbody></table>`;
-
-            const mainContent = document.querySelector('main');
-            if (mainContent) {
-                mainContent.innerHTML = formHtml + tableHtml;
-            }
-
-            // Add event listener for the new form
-            document.getElementById('create-story-form').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const device_id = document.getElementById('story-device-id').value;
-                const title = document.getElementById('story-title').value;
-                const content = document.getElementById('story-content').value;
-
-                const response = await fetch('/device_stories/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ device_id: parseInt(device_id), title, content })
-                });
-
-                if (response.ok) {
-                    renderDeviceStoriesView(); // Refresh the view
-                } else {
-                    const error = await response.json();
-                    alert(`Failed to create story: ${error.detail}`);
-                }
-            });
-
-        } catch (error) {
-            console.error('Error rendering device stories view:', error);
-            const mainContent = document.querySelector('main');
-            if (mainContent) {
-                mainContent.innerHTML = `<p>Error loading device stories.</p>`;
-            }
-        }
-    };
-
-    const renderBGeigieImportsView = async () => {
-        try {
-            const [importsRes, userRes] = await Promise.all([
-                fetch('/bgeigie-imports/', { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch('/users/users/me', { headers: { 'Authorization': `Bearer ${token}` } })
-            ]);
-            
-            if (!importsRes.ok) throw new Error('Failed to fetch bGeigie imports');
-            if (!userRes.ok) throw new Error('Failed to fetch user data');
-            
-            const imports = await importsRes.json();
-            const currentUser = await userRes.json();
-            
-            let html = `
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <h2>bGeigie Imports</h2>
-                    <button id="upload-btn" style="background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Upload</button>
-                </div>
-                
-                <div id="upload-section" style="display: none; margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa;">
-                    <h3>Upload bGeigie Log File</h3>
-                    <form id="bgeigie-upload-form">
-                        <input type="file" id="bgeigie-file-input" accept=".log" required style="margin-bottom: 10px;">
-                        <div>
-                            <button type="submit" style="background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Upload</button>
-                            <button type="button" id="cancel-upload" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Cancel</button>
-                        </div>
-                    </form>
-                </div>
-                
-                <div style="margin-bottom: 20px;">
-                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                        <button class="filter-btn active" data-filter="all">All</button>
-                        <button class="filter-btn" data-filter="unprocessed">New</button>
-                        <button class="filter-btn" data-filter="processed">Processed</button>
-                        <button class="filter-btn" data-filter="submitted">Submitted</button>
-                        <button class="filter-btn" data-filter="approved">Approved</button>
-                    </div>
-                    <div style="display: flex; gap: 10px;">
-                        <button class="owner-filter-btn active" data-owner="yours">Yours</button>
-                        <button class="owner-filter-btn" data-owner="everyone">Everyone</button>
-                    </div>
-                </div>
-                
-                <div style="margin-bottom: 10px;">
-                    <span id="results-count">${imports.length} results.</span>
-                </div>
-                
-                <table id="bgeigie-imports-table" style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
-                    <thead style="background-color: #f5f5f5;">
-                        <tr>
-                            <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="id">ID ↕</th>
-                            <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="created_at">Uploaded At ↕</th>
-                            <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="user">User ↕</th>
-                            <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="source">File Name ↕</th>
-                            <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="measurements_count"># of Measurements ↕</th>
-                            <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="status">Status ↕</th>
-                            <th style="border: 1px solid #ddd; padding: 8px;">Comment</th>
-                            <th style="border: 1px solid #ddd; padding: 8px;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="imports-tbody">
-                    </tbody>
-                </table>
-            `;
-            
-            const mainContent = document.querySelector('main');
-            if (mainContent) {
-                mainContent.innerHTML = html;
-            }
-            
-            // Store imports data for filtering/sorting
-            window.importsData = imports;
-            window.currentUser = currentUser;
-            window.currentFilter = 'all';
-            window.currentOwner = 'yours';
-            window.sortField = 'id';
-            window.sortOrder = 'desc';
-            
-            // Add upload event listeners
-            document.getElementById('upload-btn').addEventListener('click', () => {
-                document.getElementById('upload-section').style.display = 'block';
-            });
-            
-            document.getElementById('cancel-upload').addEventListener('click', () => {
-                document.getElementById('upload-section').style.display = 'none';
-                document.getElementById('bgeigie-upload-form').reset();
-            });
-            
-            document.getElementById('bgeigie-upload-form').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const fileInput = document.getElementById('bgeigie-file-input');
-                const file = fileInput.files[0];
-                if (!file) { 
-                    alert('Please select a file.'); 
-                    return; 
-                }
-
-                const formData = new FormData();
-                formData.append('file', file);
-
-                try {
-                    const response = await fetch('/bgeigie-imports/', {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}` },
-                        body: formData
-                    });
-                    if (response.ok) {
-                        alert('File uploaded successfully!');
-                        document.getElementById('upload-section').style.display = 'none';
-                        document.getElementById('bgeigie-upload-form').reset();
-                        // Refresh the imports view
-                        renderBGeigieImportsView();
-                    } else {
-                        const error = await response.json();
-                        alert(`Upload failed: ${error.detail}`);
-                    }
-                } catch (error) {
-                    console.error('Upload error:', error);
-                    alert('Upload failed: Network error');
-                }
-            });
-            
-            // Add filter event listeners
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-                    e.target.classList.add('active');
-                    window.currentFilter = e.target.dataset.filter;
-                    renderImportsTable();
-                });
-            });
-            
-            document.querySelectorAll('.owner-filter-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    document.querySelectorAll('.owner-filter-btn').forEach(b => b.classList.remove('active'));
-                    e.target.classList.add('active');
-                    window.currentOwner = e.target.dataset.owner;
-                    renderImportsTable();
-                });
-            });
-            
-            document.querySelectorAll('th[data-sort]').forEach(th => {
-                th.addEventListener('click', (e) => {
-                    const field = e.target.dataset.sort;
-                    if (window.sortField === field) {
-                        window.sortOrder = window.sortOrder === 'asc' ? 'desc' : 'asc';
-                    } else {
-                        window.sortField = field;
-                        window.sortOrder = 'desc';
-                    }
-                    renderImportsTable();
-                });
-            });
-            
-            renderImportsTable();
-            
-        } catch (error) {
-            console.error('Error rendering bGeigie imports view:', error);
-            const mainContent = document.querySelector('main');
-            if (mainContent) {
-                mainContent.innerHTML = `<p>Error loading bGeigie imports.</p>`;
-            }
-        }
-    };
-
-    const renderDevicesView = async () => {
-        try {
-            const response = await fetch('/devices/', { headers: { 'Authorization': `Bearer ${token}` } });
-            if (!response.ok) throw new Error('Failed to fetch devices');
-            
-            const devices = await response.json();
-            let tableHtml = `<h2>Devices</h2>
-                <table id="devices-table">
-                    <thead>
-                        <tr><th>ID</th><th>bGeigie Import ID</th><th>Unit</th><th>Sensor</th></tr>
-                    </thead>
-                    <tbody>`;
-            devices.forEach(device => {
-                tableHtml += `<tr><td>${device.id}</td><td>${device.bgeigie_import_id}</td><td>${device.unit}</td><td>${device.sensor}</td></tr>`;
-            });
-            tableHtml += `</tbody></table>`;
-            const mainContent = document.querySelector('main');
-            if (mainContent) {
-                mainContent.innerHTML = tableHtml;
-            }
-        } catch (error) {
-            console.error('Error rendering devices view:', error);
-            const mainContent = document.querySelector('main');
-            if (mainContent) {
-                mainContent.innerHTML = `<p>Error loading devices.</p>`;
-            }
-        }
-    };
-
-    const renderMeasurementsView = async () => {
-        try {
-            const response = await fetch('/measurements/', { headers: { 'Authorization': `Bearer ${token}` } });
-            if (!response.ok) throw new Error('Failed to fetch measurements');
-            
-            const measurements = await response.json();
-            let tableHtml = `<h2>Measurements</h2>
-                <table id="measurements-table">
-                    <thead>
-                        <tr><th>ID</th><th>CPM</th><th>Latitude</th><th>Longitude</th><th>Captured At</th></tr>
-                    </thead>
-                    <tbody>`;
-            measurements.forEach(m => {
-                tableHtml += `<tr><td>${m.id}</td><td>${m.cpm}</td><td>${m.latitude}</td><td>${m.longitude}</td><td>${new Date(m.captured_at).toLocaleString()}</td></tr>`;
-            });
-            tableHtml += `</tbody></table>`;
-            const mainContent = document.querySelector('main');
-            if (mainContent) {
-                mainContent.innerHTML = tableHtml;
-            }
-        } catch (error) {
-            console.error('Error rendering measurements view:', error);
-            const mainContent = document.querySelector('main');
-            if (mainContent) {
-                mainContent.innerHTML = `<p>Error loading measurements.</p>`;
-            }
-        }
-    };
-
-    const renderUsersView = async () => {
-        try {
-            const [usersRes, currentUserRes] = await Promise.all([
-                fetch('/users/users/all', { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch('/users/users/me', { headers: { 'Authorization': `Bearer ${token}` } })
-            ]);
-
-            if (!usersRes.ok) throw new Error('Failed to fetch users');
-            if (!currentUserRes.ok) throw new Error('Failed to fetch current user');
-
-            const users = await usersRes.json();
-            const currentUser = await currentUserRes.json();
-
-            let tableHtml = `<h2>Users</h2>
-                <table id="users-table">
-                    <thead>
-                        <tr><th>ID</th><th>Email</th><th>Is Active</th><th>Role</th><th>API Key</th>`;
-            if (currentUser.role === 'admin') {
-                tableHtml += `<th>Actions</th>`;
-            }
-            tableHtml += `</tr></thead><tbody>`;
-
-            users.forEach(user => {
-                tableHtml += `<tr>
-                    <td>${user.id}</td>
-                    <td>${user.email}</td>
-                    <td>${user.is_active}</td>
-                    <td>${user.role}</td>
-                    <td>${user.api_key}</td>`;
-                if (currentUser.role === 'admin') {
-                    tableHtml += `<td>
-                        <select class="role-select" data-user-id="${user.id}">
-                            <option value="user" ${user.role === 'user' ? 'selected' : ''}>User</option>
-                            <option value="moderator" ${user.role === 'moderator' ? 'selected' : ''}>Moderator</option>
-                            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
-                        </select>
-                    </td>`;
-                }
-                tableHtml += `</tr>`;
-            });
-
-            tableHtml += `</tbody></table>`;
-            const mainContent = document.querySelector('main');
-            if (mainContent) {
-                mainContent.innerHTML = tableHtml;
-            }
-
-            if (currentUser.role === 'admin') {
-                document.querySelectorAll('.role-select').forEach(select => {
-                    select.addEventListener('change', async (e) => {
-                        const userId = e.target.dataset.userId;
-                        const newRole = e.target.value;
-                        try {
-                            const response = await fetch(`/users/${userId}/role`, {
-                                method: 'PUT',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${token}`
-                                },
-                                body: JSON.stringify({ role: newRole })
-                            });
-                            if (response.ok) {
-                                alert('User role updated successfully.');
-                                renderUsersView(); // Refresh the view
-                            } else {
-                                const error = await response.json();
-                                alert(`Failed to update role: ${error.detail}`);
-                            }
-                        } catch (error) {
-                            console.error('Error updating user role:', error);
-                        }
-                    });
-                });
-            }
-        } catch (error) {
-            console.error('Error rendering users view:', error);
-            const mainContent = document.querySelector('main');
-            if (mainContent) {
-                mainContent.innerHTML = `<p>Error loading users.</p>`;
-            }
-        }
-    };
-
-
-    // Process import function
-    window.processImport = async (importId) => {
-        try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`/bgeigie-imports/${importId}/process`, {
-                method: 'PATCH',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (response.ok) {
-                const result = await response.json();
-                alert(`Successfully processed ${result.message}`);
-                // Refresh the imports list
-                if (window.location.hash === '#bgeigie-imports') {
-                    renderBGeigieImportsView();
-                }
-            } else {
-                const error = await response.json();
-                alert(`Error processing import: ${error.detail}`);
-            }
-        } catch (error) {
-            console.error('Error processing import:', error);
-            alert('Error processing import. Please try again.');
-        }
-    };
-
-    // Process import function
-    window.processImport = async (importId) => {
-        try {
-            const response = await fetch(`/bgeigie-imports/${importId}/process`, {
-                method: 'PATCH',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            if (response.ok) {
-                alert('Import processed successfully!');
-                loadBGeigieImports(); // Refresh the list
-            } else {
-                const error = await response.json();
-                alert(`Failed to process import: ${error.detail}`);
-            }
-        } catch (error) {
-            console.error('Error processing import:', error);
-            alert('Failed to process import');
-        }
-    };
-
-    // Delete import function
-    window.deleteImport = async (importId) => {
-        if (!confirm('Are you sure you want to delete this import? This action cannot be undone.')) {
+    const mapContainer = document.getElementById('import-map');
+    if (!mapContainer) {
+        console.error('Map container not found');
+        return;
+    }
+    
+    // Clear any existing map
+    if (window.bgeigieMapInstance) {
+        window.bgeigieMapInstance.remove();
+    }
+    
+    // Initialize map
+    const map = L.map('import-map').setView([35.6762, 139.6503], 10);
+    
+    // Add OpenStreetMap tiles
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+    
+    window.bgeigieMapInstance = map;
+    
+    // Load and display measurement data
+    try {
+        const response = await fetch(`/bgeigie-imports/${importId}/measurements`);
+        if (!response.ok) throw new Error('Failed to load measurements');
+        
+        const data = await response.json();
+        const measurements = data.measurements || [];
+        
+        if (measurements.length === 0) {
+            console.warn('No measurements found for import');
             return;
         }
         
-        try {
-            const response = await fetch(`/bgeigie-imports/${importId}`, {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            if (response.ok) {
-                alert('Import deleted successfully!');
-                loadBGeigieImports(); // Refresh the list
-            } else {
-                const error = await response.json();
-                alert(`Failed to delete import: ${error.detail}`);
+        const markers = [];
+        
+        // Add markers for each measurement
+        measurements.forEach(measurement => {
+            if (measurement.latitude && measurement.longitude) {
+                const cpm = measurement.cpm || 0;
+                const microSvPerHour = cpm / 334; // LND7317 conversion
+                
+                // Color based on radiation level
+                const getColor = (cpm) => {
+                    const uSvh = cpm / 334;
+                    if (uSvh >= 100) return '#ffff00';
+                    if (uSvh >= 10) return '#ff8000';
+                    if (uSvh >= 1) return '#ff0000';
+                    if (uSvh >= 0.25) return '#8000ff';
+                    if (uSvh >= 0.08) return '#00ffff';
+                    return '#0000ff';
+                };
+                
+                const marker = L.circleMarker([measurement.latitude, measurement.longitude], {
+                    radius: Math.max(3, Math.min(10, Math.log(cpm + 1) * 2)),
+                    fillColor: getColor(cpm),
+                    color: '#000',
+                    weight: 1,
+                    opacity: 0.8,
+                    fillOpacity: 0.7
+                });
+                
+                // Add popup with measurement details
+                const popupContent = `
+                    <strong>${microSvPerHour.toFixed(2)} µSv/h</strong><br>
+                    <strong>${cpm} CPM</strong><br>
+                    Lat: ${measurement.latitude.toFixed(6)}<br>
+                    Lng: ${measurement.longitude.toFixed(6)}<br>
+                    ${measurement.captured_at ? new Date(measurement.captured_at).toLocaleString() : ''}
+                `;
+                
+                marker.bindPopup(popupContent);
+                marker.addTo(map);
+                markers.push(marker);
             }
-        } catch (error) {
-            console.error('Error deleting import:', error);
-            alert('Failed to delete import');
+        });
+        
+        // Store markers globally for control buttons
+        window.currentMarkers = markers;
+        
+        // Fit map to show all markers
+        if (markers.length > 0) {
+            const group = new L.featureGroup(markers);
+            map.fitBounds(group.getBounds().pad(0.1));
         }
-    };
+        
+        // Update statistics
+        const totalMeasurements = measurements.length;
+        const avgCPM = measurements.reduce((sum, m) => sum + (m.cpm || 0), 0) / totalMeasurements;
+        const maxCPM = Math.max(...measurements.map(m => m.cpm || 0));
+        const minCPM = Math.min(...measurements.map(m => m.cpm || 0));
+        
+        // Update stats in the UI
+        const totalEl = document.getElementById('total-measurements');
+        const avgEl = document.getElementById('avg-cpm');
+        const maxEl = document.getElementById('max-cpm');
+        const minEl = document.getElementById('min-cpm');
+        
+        if (totalEl) totalEl.textContent = totalMeasurements;
+        if (avgEl) avgEl.textContent = avgCPM.toFixed(1);
+        if (maxEl) maxEl.textContent = maxCPM;
+        if (minEl) minEl.textContent = minCPM;
+        
+    } catch (error) {
+        console.error('Error loading measurement data:', error);
+    }
+};
 
-    // Approve import function
-    window.approveImport = async (importId) => {
-        try {
-            const response = await fetch(`/bgeigie-imports/${importId}/approve`, {
-                method: 'PATCH',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            if (response.ok) {
-                alert('Import approved successfully!');
-                loadBGeigieImports(); // Refresh the list
-            } else {
-                const error = await response.json();
-                alert(`Failed to approve import: ${error.detail}`);
-            }
-        } catch (error) {
-            console.error('Error approving import:', error);
-            alert('Error approving import. Please try again.');
+// Global functions for map controls
+window.toggleHeatmap = () => {
+    if (window.bgeigieMapInstance && window.currentMarkers) {
+        // Simple toggle between markers and heatmap view
+        console.log('Toggle heatmap functionality - to be implemented');
+    }
+};
+
+window.fitToData = () => {
+    if (window.bgeigieMapInstance && window.currentMarkers && window.currentMarkers.length > 0) {
+        const group = new L.featureGroup(window.currentMarkers);
+        window.bgeigieMapInstance.fitBounds(group.getBounds().pad(0.1));
+    }
+};
+
+window.exportData = (importId) => {
+    window.open(`/bgeigie-imports/${importId}/export`, '_blank');
+};
+
+// --- GLOBAL ACTION HANDLERS (for onclick) ---
+window.processImport = async (importId) => {
+    if (!confirm('Are you sure you want to process this import?')) return;
+    try {
+        const response = await fetch(`/bgeigie-imports/${importId}/process`, {
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${window.appState.token}` }
+        });
+        if (response.ok) {
+            alert('Import processed successfully!');
+            // Refresh the imports list to show updated status
+            await renderBGeigieImportsView();
+        } else {
+            const error = await response.json();
+            alert(`Failed to process import: ${error.detail}`);
         }
-    };
+    } catch (error) {
+        console.error('Error processing import:', error);
+        alert('Failed to process import');
+    }
+};
 
-    // Reject import function
-    window.rejectImport = async (importId) => {
-        try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`/bgeigie-imports/${importId}/reject`, {
-                method: 'PATCH',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (response.ok) {
-                alert('Import rejected successfully!');
-                // Refresh the imports list
-                if (window.location.hash === '#bgeigie-imports') {
-                    renderBGeigieImportsView();
-                }
-            } else {
-                const error = await response.json();
-                alert(`Error rejecting import: ${error.detail}`);
-            }
-        } catch (error) {
-            console.error('Error rejecting import:', error);
-            alert('Error rejecting import. Please try again.');
+window.approveImport = async (importId) => {
+    if (!confirm('Are you sure you want to approve this import?')) return;
+    try {
+        const response = await fetch(`/bgeigie-imports/${importId}/approve`, {
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${window.appState.token}` }
+        });
+        if (response.ok) {
+            alert('Import approved successfully!');
+            // Refresh the imports list
+            await renderBGeigieImportsView();
+        } else {
+            const error = await response.json();
+            alert(`Failed to approve import: ${error.detail}`);
         }
-    };
+    } catch (error) {
+        console.error('Error approving import:', error);
+        alert('Error approving import.');
+    }
+};
 
-    // Debug: Check if elements exist
-    console.log('Login form:', loginForm);
-    console.log('Login modal:', loginModal);
-    console.log('Auth nav:', authNav);
-    console.log('User info:', userInfo);
-    console.log('Logged out content:', loggedOutContent);
-    console.log('Logged in content:', loggedInContent);
-    console.log('Static API docs:', staticApiDocs);
-    console.log('Current token:', token);
-    
-    // Initialize the app - check for existing token and update UI
-    console.log('Calling fetchUserData...');
-    fetchUserData();
-});
+window.rejectImport = async (importId) => {
+    if (!confirm('Are you sure you want to reject this import?')) return;
+    try {
+        const response = await fetch(`/bgeigie-imports/${importId}/reject`, {
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${window.appState.token}` }
+        });
+        if (response.ok) {
+            alert('Import rejected successfully!');
+            // Refresh the imports list
+            await renderBGeigieImportsView();
+        } else {
+            const error = await response.json();
+            alert(`Error rejecting import: ${error.detail}`);
+        }
+    } catch (error) {
+        console.error('Error rejecting import:', error);
+        alert('Error rejecting import.');
+    }
+};
+
+window.deleteImport = async (importId) => {
+    if (!confirm('Are you sure you want to delete this import? This action cannot be undone.')) return;
+    try {
+        const response = await fetch(`/bgeigie-imports/${importId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${window.appState.token}` }
+        });
+        if (response.ok) {
+            alert('Import deleted successfully!');
+            // Refresh the imports list
+            await renderBGeigieImportsView();
+        } else {
+            const error = await response.json();
+            alert(`Failed to delete import: ${error.detail}`);
+        }
+    } catch (error) {
+        console.error('Error deleting import:', error);
+        alert('Failed to delete import');
+    }
+};

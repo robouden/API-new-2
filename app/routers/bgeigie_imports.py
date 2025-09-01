@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import datetime
 from .. import crud, models, schemas
-from ..security import get_db, get_current_active_user, get_current_admin_user
+from ..security import get_db, get_current_active_user, get_current_admin_user, get_optional_user
 from .. import bgeigie_parser
+from ..email_service import send_bgeigie_notification_email
 import os
 
 router = APIRouter()
@@ -44,22 +45,93 @@ def should_auto_approve(measurements: List[dict], max_cpm: int) -> bool:
     return True
 
 
-@router.get("/", response_model=List[schemas.BGeigieImport])
+@router.get("/")
 def read_bgeigie_imports(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_active_user)
+    current_user: Optional[models.User] = Depends(get_optional_user)
 ):
-    imports = crud.get_bgeigie_imports_by_user(db, user_id=current_user.id, skip=skip, limit=limit)
-    return imports
+    # Public access - show all approved imports, or user's own imports if logged in
+    if current_user and current_user.role == 'admin':
+        # Admins see all imports
+        imports = db.query(models.BGeigieImport).join(models.User).offset(skip).limit(limit).all()
+    elif current_user:
+        # Logged in users see their own imports plus all approved ones
+        imports = db.query(models.BGeigieImport).join(models.User).filter(
+            (models.BGeigieImport.user_id == current_user.id) | 
+            (models.BGeigieImport.status == 'approved')
+        ).offset(skip).limit(limit).all()
+    else:
+        # Anonymous users see only approved imports
+        imports = db.query(models.BGeigieImport).join(models.User).filter(
+            models.BGeigieImport.status == 'approved'
+        ).offset(skip).limit(limit).all()
+    
+    # Convert to dict format with user information
+    result = []
+    for imp in imports:
+        imp_dict = {
+            "id": imp.id,
+            "source": imp.source,
+            "user_id": imp.user_id,
+            "status": imp.status,
+            "name": imp.name,
+            "description": imp.description,
+            "cities": imp.cities,
+            "credits": imp.credits,
+            "subtype": imp.subtype,
+            "measurements_count": imp.measurements_count,
+            "lines_count": imp.lines_count,
+            "approved": imp.approved,
+            "rejected": imp.rejected,
+            "created_at": imp.created_at,
+            "user_name": imp.user.name if imp.user else None,
+            "user_email": imp.user.email if imp.user else None
+        }
+        result.append(imp_dict)
+    
+    return result
+
+
+@router.get("/{import_id}")
+async def get_import(
+    import_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_optional_user)
+):
+    """Get individual import data"""
+    db_import = db.query(models.BGeigieImport).filter(
+        models.BGeigieImport.id == import_id
+    ).first()
+    
+    if not db_import:
+        raise HTTPException(status_code=404, detail="Import not found")
+    
+    return {
+        "id": db_import.id,
+        "source": db_import.source,
+        "status": db_import.status,
+        "measurements_count": db_import.measurements_count,
+        "created_at": db_import.created_at,
+        "user_id": db_import.user_id,
+        "name": db_import.name,
+        "cities": db_import.cities,
+        "credits": db_import.credits,
+        "description": db_import.description,
+        "approved": db_import.approved,
+        "rejected": db_import.rejected,
+        "approved_by": db_import.approved_by,
+        "rejected_by": db_import.rejected_by
+    }
 
 
 @router.get("/{import_id}/detail", response_class=HTMLResponse)
 async def get_import_detail(
     import_id: int,
     request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_optional_user)
 ):
     """Display detailed view with map for a bGeigie import"""
     db_import = db.query(models.BGeigieImport).filter(
@@ -78,7 +150,8 @@ async def get_import_detail(
 @router.get("/{import_id}/measurements")
 async def get_import_measurements(
     import_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_optional_user)
 ):
     """Get measurement data for map visualization"""
     db_import = db.query(models.BGeigieImport).filter(
@@ -138,6 +211,18 @@ async def update_import_metadata(
     
     db.commit()
     db.refresh(db_import)
+    
+    # Send email notification to the import owner
+    try:
+        await send_bgeigie_notification_email(
+            recipient_email=db_import.user.email,
+            recipient_name=db_import.user.name or db_import.user.email,
+            action="submitted",
+            import_id=db_import.id,
+            import_filename=db_import.source
+        )
+    except Exception as e:
+        print(f"Failed to send submission email: {e}")
     
     return {"message": "Metadata updated successfully", "import": db_import}
 
@@ -206,11 +291,12 @@ async def create_bgeigie_import(
             db_bgeigie_import.measurements_count = len(filtered_measurements)
             db_bgeigie_import.status = "processed"
             
-            # Auto-approval logic based on quality thresholds
-            if should_auto_approve(filtered_measurements, max_cpm):
-                db_bgeigie_import.status = "approved"
-                db_bgeigie_import.approved_at = datetime.utcnow()
-                db_bgeigie_import.approved_by = "auto-approval"
+            # Remove auto-approval to allow metadata entry
+            # Auto-approval logic disabled to preserve metadata workflow
+            # if should_auto_approve(filtered_measurements, max_cpm):
+            #     db_bgeigie_import.status = "approved"
+            #     db_bgeigie_import.approved_at = datetime.utcnow()
+            #     db_bgeigie_import.approved_by = "auto-approval"
             
             db.commit()
             db.refresh(db_bgeigie_import)
@@ -224,28 +310,69 @@ async def create_bgeigie_import(
     return db_bgeigie_import
 
 @router.patch("/{id}/submit")
-def submit_bgeigie_import(id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_active_user)):
+async def submit_bgeigie_import(id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_active_user)):
     db_import = crud.update_bgeigie_import_status(db, id, "submitted", current_user.id)
     if not db_import:
         raise HTTPException(status_code=404, detail="Import not found")
+    
+    # Send email notification to the import owner
+    try:
+        await send_bgeigie_notification_email(
+            recipient_email=db_import.user.email,
+            recipient_name=db_import.user.name or db_import.user.email,
+            action="submitted",
+            import_id=db_import.id,
+            import_filename=db_import.source
+        )
+    except Exception as e:
+        print(f"Failed to send submission email: {e}")
+    
     return db_import
 
 @router.patch("/{id}/approve")
-def approve_bgeigie_import(id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_admin_user)):
+async def approve_bgeigie_import(id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_admin_user)):
     db_import = crud.update_bgeigie_import_status(db, id, "approved")
     if not db_import:
         raise HTTPException(status_code=404, detail="Import not found")
+    
+    # Send email notification to the import owner
+    try:
+        await send_bgeigie_notification_email(
+            recipient_email=db_import.user.email,
+            recipient_name=db_import.user.name or db_import.user.email,
+            action="approved",
+            import_id=db_import.id,
+            import_filename=db_import.source,
+            admin_name=current_user.name or current_user.email
+        )
+    except Exception as e:
+        print(f"Failed to send approval email: {e}")
+    
     return db_import
 
 @router.patch("/{id}/reject")
-def reject_bgeigie_import(id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_admin_user)):
+async def reject_bgeigie_import(id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_admin_user)):
     db_import = crud.update_bgeigie_import_status(db, id, "rejected")
     if not db_import:
         raise HTTPException(status_code=404, detail="Import not found")
+    
+    # Send email notification to the import owner
+    try:
+        await send_bgeigie_notification_email(
+            recipient_email=db_import.user.email,
+            recipient_name=db_import.user.name or db_import.user.email,
+            action="rejected",
+            import_id=db_import.id,
+            import_filename=db_import.source,
+            admin_name=current_user.name or current_user.email
+        )
+    except Exception as e:
+        print(f"Failed to send rejection email: {e}")
+    
     return db_import
 
 @router.patch("/{id}/process")
-def process_bgeigie_import(id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_active_user)):
+async def process_bgeigie_import(id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_active_user)):
     """Manually trigger processing of an uploaded bGeigie import"""
     # Get the import record
     db_import = db.query(models.BGeigieImport).filter(models.BGeigieImport.id == id).first()
@@ -290,6 +417,18 @@ def process_bgeigie_import(id: int, db: Session = Depends(get_db), current_user:
             db.commit()
             db.refresh(db_import)
             
+            # Send email notification to the import owner
+            try:
+                await send_bgeigie_notification_email(
+                    recipient_email=db_import.user.email,
+                    recipient_name=db_import.user.name or db_import.user.email,
+                    action="processed",
+                    import_id=db_import.id,
+                    import_filename=db_import.source
+                )
+            except Exception as e:
+                print(f"Failed to send processing email: {e}")
+            
             return {"message": f"Successfully processed {len(filtered_measurements)} measurements", "import": db_import}
         else:
             raise HTTPException(status_code=400, detail="No valid measurements found in file")
@@ -300,7 +439,7 @@ def process_bgeigie_import(id: int, db: Session = Depends(get_db), current_user:
         raise HTTPException(status_code=500, detail=f"Failed to parse and process file: {e}")
 
 @router.delete("/{id}")
-def delete_bgeigie_import(
+async def delete_bgeigie_import(
     id: int, 
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(get_current_active_user)
@@ -308,35 +447,80 @@ def delete_bgeigie_import(
     """Delete a bGeigie import and all associated measurements"""
     print(f"Attempting to delete import {id} for user {current_user.id}")
     
-    # Get the import record
-    db_import = db.query(models.BGeigieImport).filter(
-        models.BGeigieImport.id == id,
-        models.BGeigieImport.user_id == current_user.id
+    # First, get the import record regardless of owner to produce clearer diagnostics
+    db_import_any = db.query(models.BGeigieImport).filter(
+        models.BGeigieImport.id == id
     ).first()
-    
-    if not db_import:
-        print(f"Import {id} not found or not owned by user {current_user.id}")
-        raise HTTPException(status_code=404, detail="Import not found or not owned by user")
+
+    if not db_import_any:
+        print(f"Import {id} not found in database")
+        raise HTTPException(status_code=404, detail="Import not found")
+
+    if db_import_any.user_id != current_user.id:
+        # Allow admins to delete any import
+        if getattr(current_user, 'role', None) == 'admin':
+            print(f"Admin user {current_user.id} overriding ownership to delete import {id} owned by {db_import_any.user_id}")
+        else:
+            print(f"Import {id} owned by user {db_import_any.user_id}, not current user {current_user.id}")
+            raise HTTPException(status_code=403, detail="Import not owned by user")
+
+    # Owned by current user
+    db_import = db_import_any
     
     try:
         print(f"Deleting all related records for import {id}")
         
-        # Delete measurements first (this is what's blocking the delete)
-        measurements_deleted = db.execute(text("DELETE FROM measurements WHERE bgeigie_import_id = :import_id"), {"import_id": id})
-        print(f"Deleted {measurements_deleted.rowcount} measurements")
+        # Get count of measurements to delete
+        measurements_count = db.execute(text("SELECT COUNT(*) FROM measurements WHERE bgeigie_import_id = :import_id"), {"import_id": id}).scalar()
+        print(f"Found {measurements_count} measurements to delete")
         
-        # Delete devices if any exist
-        devices_deleted = db.execute(text("DELETE FROM devices WHERE bgeigie_import_id = :import_id"), {"import_id": id})
-        print(f"Deleted {devices_deleted.rowcount} devices")
+        # Force delete all measurements using raw SQL (ORM seems to have issues with large deletes)
+        db.execute(text("DELETE FROM measurements WHERE bgeigie_import_id = :import_id"), {"import_id": id})
+        db.flush()
+        print(f"Force deleted measurements using raw SQL")
         
-        # Delete bgeigie_logs if any exist
-        logs_deleted = db.execute(text("DELETE FROM bgeigie_logs WHERE bgeigie_import_id = :import_id"), {"import_id": id})
-        print(f"Deleted {logs_deleted.rowcount} bgeigie_logs")
+        # Delete devices using raw SQL for consistency
+        db.execute(text("DELETE FROM devices WHERE bgeigie_import_id = :import_id"), {"import_id": id})
+        db.flush()
+        print(f"Force deleted devices using raw SQL")
         
-        # Now delete the import record itself
+        # Delete bgeigie_logs using raw SQL
+        db.execute(text("DELETE FROM bgeigie_logs WHERE bgeigie_import_id = :import_id"), {"import_id": id})
+        db.flush()
+        print(f"Force deleted bgeigie_logs using raw SQL")
+        
+        # Verify all child records are actually deleted
+        remaining_measurements = db.execute(text("SELECT COUNT(*) FROM measurements WHERE bgeigie_import_id = :import_id"), {"import_id": id}).scalar()
+        remaining_devices = db.execute(text("SELECT COUNT(*) FROM devices WHERE bgeigie_import_id = :import_id"), {"import_id": id}).scalar()
+        remaining_logs = db.execute(text("SELECT COUNT(*) FROM bgeigie_logs WHERE bgeigie_import_id = :import_id"), {"import_id": id}).scalar()
+        print(f"Remaining after deletes — measurements: {remaining_measurements}, devices: {remaining_devices}, logs: {remaining_logs}")
+        
+        if remaining_measurements > 0 or remaining_devices > 0 or remaining_logs > 0:
+            raise Exception(
+                f"Child rows still present (measurements={remaining_measurements}, devices={remaining_devices}, logs={remaining_logs})"
+            )
+        
+        # Commit child deletions before deleting parent to satisfy FK constraints in DuckDB
+        db.commit()
+        print("Committed child deletions")
+
+        # Now delete the import record using ORM (new transaction)
+        db.refresh(db_import)
         db.delete(db_import)
         db.commit()
-        print(f"Deleted import record {id}")
+        print(f"Successfully deleted import {id}")
+        
+        # Send email notification to the import owner
+        try:
+            await send_bgeigie_notification_email(
+                recipient_email=db_import.user.email,
+                recipient_name=db_import.user.name or db_import.user.email,
+                action="deleted",
+                import_id=db_import.id,
+                import_filename=db_import.source
+            )
+        except Exception as e:
+            print(f"Failed to send deletion email: {e}")
         
         # Try to delete the uploaded file
         file_path = f"uploads/{db_import.source}"
@@ -344,7 +528,6 @@ def delete_bgeigie_import(
             os.remove(file_path)
             print(f"Deleted file: {file_path}")
         
-        print(f"Successfully deleted import {id}")
         return {"message": "Import deleted successfully"}
         
     except Exception as e:

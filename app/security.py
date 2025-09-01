@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
@@ -19,7 +19,8 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 Scheme
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token", auto_error=False)
+http_bearer = HTTPBearer(auto_error=False)
 
 
 def get_db(request: Request):
@@ -88,6 +89,20 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
 async def get_current_active_user(current_user: models.User = Depends(get_current_user)):
     # Here you could check if the user is active. For now, we'll just return the user.
     return current_user
+
+async def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer), db: Session = Depends(get_db)) -> Optional[models.User]:
+    """Get current user if authenticated, return None if not"""
+    if not credentials:
+        return None
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            return None
+        user = crud.get_user_by_email(db, email=email)
+        return user
+    except JWTError:
+        return None
 
 
 def get_current_admin_user(current_user: models.User = Depends(get_current_active_user)):

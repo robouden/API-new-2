@@ -8,10 +8,16 @@ class Settings(BaseSettings):
     MAIL_USERNAME: str = "your-username"
     MAIL_PASSWORD: str = "your-password"
     MAIL_FROM: str = "noreply@safecast.org"
+    MAIL_FROM_NAME: str = "Safecast API"
     MAIL_PORT: int = 587
     MAIL_SERVER: str = "smtp.mailtrap.io"
     MAIL_STARTTLS: bool = True
     MAIL_SSL_TLS: bool = False
+
+    # JWT Configuration
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     class Config:
         # If you create a .env file in the root directory, these settings will be loaded from it.

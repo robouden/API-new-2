@@ -67,8 +67,8 @@
                 <!-- Map Container -->
                 <div id="import-map"></div>
 
-                <!-- Metadata Form (only show if import is processed but not approved) -->
-                {% if import.status == 'processed' and not import.approved and not import.rejected %}
+                <!-- Metadata Form (show for processed or approved imports to allow editing) -->
+                {% if (import.status == 'processed' or import.status == 'approved') and not import.rejected %}
                 <div class="metadata-form">
                     <h3>Add Import Metadata</h3>
                     <p>Please provide additional information about this radiation measurement drive:</p>

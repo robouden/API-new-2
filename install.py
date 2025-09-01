@@ -55,10 +55,13 @@ def setup_admin_user():
             result = con.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM users").fetchone()
             next_id = result[0]
             
+            # Extract name from email (part before @)
+            name = email.split('@')[0]
+            
             con.execute(
-                """INSERT INTO users (id, email, hashed_password, api_key, is_active, role)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (next_id, email, hashed_password, api_key, True, "admin"),
+                """INSERT INTO users (id, email, name, hashed_password, api_key, is_active, role)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (next_id, email, name, hashed_password, api_key, True, "admin"),
             )
             con.close()
             return  # Exit early since we already closed the db session
@@ -77,6 +80,7 @@ if __name__ == "__main__":
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY,
             email VARCHAR, 
+            name VARCHAR,
             hashed_password VARCHAR, 
             api_key VARCHAR, 
             is_active BOOLEAN, 

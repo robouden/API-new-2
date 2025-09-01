@@ -91,6 +91,31 @@ async def refresh_access_token(refresh_request: schemas.RefreshTokenRequest, db:
 async def read_users_me(current_user: models.User = Depends(get_current_active_user)):
     return current_user
 
+@router.put("/users/me/profile", response_model=schemas.User)
+async def update_user_profile(
+    profile: schemas.UserProfile,
+    current_user: models.User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Update current user's profile"""
+    current_user.name = profile.name
+    current_user.email = profile.email
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+@router.get("/users/{user_id}", response_model=schemas.User)
+async def get_user_profile(
+    user_id: int,
+    current_user: models.User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get user profile by ID"""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
 @router.get("/users/me/items/")
 async def read_own_items(current_user: models.User = Depends(get_current_active_user)):
     return [{"item_id": "Foo", "owner": current_user.email}]

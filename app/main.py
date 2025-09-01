@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqladmin import Admin, ModelView
+from contextlib import asynccontextmanager
 from .database import setup_database, SQLALCHEMY_DATABASE_URL
 from .routers import users, bgeigie_imports, measurements, devices, device_stories
 from .background_tasks import start_background_processor, stop_background_processor
@@ -13,26 +14,32 @@ from . import models
 
 load_dotenv()  # Load environment variables from .env file
 
-app = FastAPI()
-
-@app.on_event("startup")
-async def on_startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic
     engine = create_engine(SQLALCHEMY_DATABASE_URL)
     app.state.db_engine = engine
     app.state.db_sessionmaker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     setup_database(engine)
-    
-    # Start background job processor
-    await start_background_processor()
 
-@app.on_event("shutdown")
-async def on_shutdown():
-    # Stop background job processor
+    # Setup admin interface
+    admin = Admin(app, engine)
+    admin.add_view(UserAdmin)
+    admin.add_view(BGeigieImportAdmin)
+    admin.add_view(MeasurementAdmin)
+    admin.add_view(DeviceAdmin)
+    admin.add_view(DeviceStoryAdmin)
+    admin.add_view(DeviceStoryCommentAdmin)
+    admin.add_view(BGeigieLogAdmin)
+
+    await start_background_processor()
+    
+    yield
+    
+    # Shutdown logic
     await stop_background_processor()
 
-# Setup admin interface after startup
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
-admin = Admin(app, engine)
+app = FastAPI(lifespan=lifespan)
 
 class UserAdmin(ModelView, model=models.User):
     column_list = [models.User.id, models.User.email, models.User.role, models.User.is_active]
@@ -55,13 +62,6 @@ class DeviceStoryCommentAdmin(ModelView, model=models.DeviceStoryComment):
 class BGeigieLogAdmin(ModelView, model=models.BGeigieLog):
     column_list = [models.BGeigieLog.id, models.BGeigieLog.cpm, models.BGeigieLog.latitude, models.BGeigieLog.longitude]
 
-admin.add_view(UserAdmin)
-admin.add_view(BGeigieImportAdmin)
-admin.add_view(MeasurementAdmin)
-admin.add_view(DeviceAdmin)
-admin.add_view(DeviceStoryAdmin)
-admin.add_view(DeviceStoryCommentAdmin)
-admin.add_view(BGeigieLogAdmin)
 
 app.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(bgeigie_imports.router, prefix="/bgeigie-imports", tags=["bgeigie_imports"])

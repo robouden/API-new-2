@@ -4,6 +4,7 @@ from typing import List, Optional
 
 class UserBase(BaseModel):
     email: str
+    name: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str
@@ -18,6 +19,10 @@ class User(UserBase):
 
     class Config:
         from_attributes = True
+
+class UserProfile(BaseModel):
+    name: Optional[str] = None
+    email: str
 
 class UserUpdate(BaseModel):
     role: Optional[str] = None

@@ -15,152 +15,28 @@
                 <a href="#" id="register-link">REGISTER</a>
             </nav>
              <div id="user-info" class="hidden">
-                Welcome, <span id="user-email"></span>! <button id="logout-button">Logout</button>
+                Welcome, <span id="user-email"></span>! 
+                <span>API Key: <span id="user-api-key"></span></span>
+                <button id="logout-button">Logout</button>
+            </div>
+            <div id="upload-btn-wrapper" class="hidden">
+                <button id="upload-btn">Upload Data</button>
             </div>
         </header>
         <div class="main-content">
             <aside>
                 <ul>
-                    <li><a href="#" class="active">Safecast API</a></li>
-                    <li><a href="#">Users</a></li>
-                    <li><a href="#">Measurements</a></li>
-                    <li><a href="#">bGeigie Imports</a></li>
-                    <li><a href="#">Devices</a></li>
-                    <li><a href="#">Device Stories</a></li>
-                    <li><a href="#">Radiation Index</a></li>
-                    <li><a href="#">Ingest Export</a></li>
+                    <li><a href="#" class="active">Home</a></li>
+                    <li><a href="#users">Users</a></li>
+                    <li><a href="#measurements">Measurements</a></li>
+                    <li><a href="#bgeigie-imports">bGeigie Imports</a></li>
+                    <li><a href="#devices">Devices</a></li>
+                    <li><a href="#device-stories">Device Stories</a></li>
+                    <li><a href="#radiation-index">Radiation Index</a></li>
+                    <li><a href="#ingest-export">Ingest/Export</a></li>
                 </ul>
             </aside>
             <main>
-                <div id="logged-out-content">
-                    <h1>The Safecast API</h1>
-                    <p>Query and add to the Safecast dataset with your own application.</p>
-                </div>
-
-                <div id="logged-in-content" class="hidden">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                        <h1>bGeigie Imports</h1>
-                        <button id="upload-btn" style="background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Upload</button>
-                    </div>
-                    
-                    <div id="upload-section" style="display: none; margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa;">
-                        <h3>Upload bGeigie Log File</h3>
-                        <form id="upload-form" enctype="multipart/form-data">
-                            <input type="file" id="file-input" name="file" accept=".log,.LOG" required style="margin-bottom: 10px;">
-                            <div>
-                                <button type="submit" style="background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Upload</button>
-                                <button type="button" id="cancel-upload" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Cancel</button>
-                            </div>
-                        </form>
-                    </div>
-                    
-                    <div style="margin-bottom: 20px;">
-                        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                            <button class="filter-btn active" data-filter="all" style="padding: 5px 10px; border: 1px solid #ccc; background: #007bff; color: white; border-radius: 3px; cursor: pointer;">All</button>
-                            <button class="filter-btn" data-filter="unprocessed" style="padding: 5px 10px; border: 1px solid #ccc; background: white; color: #333; border-radius: 3px; cursor: pointer;">New</button>
-                            <button class="filter-btn" data-filter="processed" style="padding: 5px 10px; border: 1px solid #ccc; background: white; color: #333; border-radius: 3px; cursor: pointer;">Processed</button>
-                            <button class="filter-btn" data-filter="submitted" style="padding: 5px 10px; border: 1px solid #ccc; background: white; color: #333; border-radius: 3px; cursor: pointer;">Submitted</button>
-                            <button class="filter-btn" data-filter="approved" style="padding: 5px 10px; border: 1px solid #ccc; background: white; color: #333; border-radius: 3px; cursor: pointer;">Approved</button>
-                        </div>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="owner-filter-btn active" data-owner="yours" style="padding: 5px 10px; border: 1px solid #ccc; background: #007bff; color: white; border-radius: 3px; cursor: pointer;">Yours</button>
-                            <button class="owner-filter-btn" data-owner="everyone" style="padding: 5px 10px; border: 1px solid #ccc; background: white; color: #333; border-radius: 3px; cursor: pointer;">Everyone</button>
-                        </div>
-                    </div>
-                    
-                    <div style="margin-bottom: 10px;">
-                        <span id="results-count">0 results.</span>
-                    </div>
-                    
-                    <div class="user-api-key" style="margin-bottom: 20px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
-                        <strong>Your API Key:</strong> <span id="user-api-key"></span>
-                    </div>
-                    
-                    <table id="imports-table" style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
-                        <thead style="background-color: #f5f5f5;">
-                            <tr>
-                                <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="id">ID ↕</th>
-                                <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="created_at">Uploaded At ↕</th>
-                                <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="user">User ↕</th>
-                                <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="source">File Name ↕</th>
-                                <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="measurements_count"># of Measurements ↕</th>
-                                <th style="border: 1px solid #ddd; padding: 8px; cursor: pointer;" data-sort="status">Status ↕</th>
-                                <th style="border: 1px solid #ddd; padding: 8px;">Comment</th>
-                                <th style="border: 1px solid #ddd; padding: 8px;">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="imports-tbody">
-                        </tbody>
-                    </table>
-                </div>
-
-                <div id="static-api-docs">
-                    <section class="api-section">
-                        <h2>API Endpoint</h2>
-                        <div class="api-endpoint">
-                            <pre><code>GET https://api.safecast.org/.json</code></pre>
-                        </div>
-                    </section>
-
-                    <section class="api-section">
-                        <h2>Available Resources</h2>
-                        <ul class="resource-list">
-                            <li><strong>Users</strong> Add and view user accounts</li>
-                            <li><strong>Measurements</strong> Add and view measurements</li>
-                            <li><strong>bGeigie Imports</strong> Add and view bGeigie Imports</li>
-                            <li><strong>Devices</strong> Add and view Devices</li>
-                        </ul>
-                    </section>
-
-                    <section class="api-section">
-                        <h2>Users</h2>
-                        <ul class="api-calls">
-                            <li>Get a list of users <span>GET /users.json</span></li>
-                            <li>Add a new user <span>POST /users.json</span></li>
-                            <li>View a user <span>GET /users/1.json</span></li>
-                        </ul>
-                    </section>
-
-                    <section class="api-section">
-                        <h2>Measurements</h2>
-                        <ul class="api-calls">
-                            <li>Get a list of measurements <span>GET /measurements.json</span></li>
-                            <li>Add a new measurement <span>POST /measurements.json</span></li>
-                            <li>View a measurement <span>GET /measurements/13192557.json</span></li>
-                        </ul>
-                    </section>
-
-                    <section class="api-section">
-                        <h2>bGeigie Imports</h2>
-                        <ul class="api-calls">
-                            <li>Get a list of bGeigie imports <span>GET /bgeigie_imports.json</span></li>
-                            <li>Add a new bGeigie import <span>POST /bgeigie_imports.json</span></li>
-                            <li>View a bGeigie import <span>GET /bgeigie_imports/10757.json</span></li>
-                        </ul>
-                    </section>
-
-                    <section class="api-section">
-                        <h2>Devices</h2>
-                        <ul class="api-calls">
-                            <li>Get a list of devices <span>GET /devices.json</span></li>
-                            <li>Add a new device <span>POST /devices.json</span></li>
-                            <li>View a device <span>GET /devices/4.json</span></li>
-                        </ul>
-                    </section>
-
-                    <section class="api-section">
-                        <h2>Using the API</h2>
-                        <h3>Measurements</h3>
-                        <p>The <strong>Measurement</strong> is the basic unit in the Safecast database.</p>
-                        <p>A measurement is composed of four key parts.</p>
-                        <ul class="api-usage-list">
-                            <li>Timestamp <code>captured_at</code></li>
-                            <li>Unit <code>unit</code></li>
-                            <li>Value <code>value</code></li>
-                            <li>Geopoint <code>location</code> (<code>latitude</code>, <code>longitude</code>)</li>
-                        </ul>
-                    </section>
-                </div>
             </main>
         </div>
     </div>
