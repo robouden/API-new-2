@@ -61,6 +61,35 @@ class BGeigieMap {
         return 3;
     }
 
+    // Convert µSv/h to discrete heat weight aligned with legend scale
+    microSvToHeatWeight(microSvPerHour) {
+        // Match current marker palette (6 colors):
+        // <0.08 blue, 0.08-0.25 cyan, 0.25-1 purple, 1-10 red, 10-100 orange, >=100 yellow
+        const u = microSvPerHour;
+        if (u >= 100) return 1.00;        // yellow
+        if (u >= 10) return 0.82;         // orange
+        if (u >= 1.0) return 0.64;        // red
+        if (u >= 0.25) return 0.46;       // purple
+        if (u >= 0.08) return 0.28;       // cyan
+        return 0.12;                      // blue
+    }
+
+    // Map µSv/h to a weight in [0,1] aligned with legend thresholds
+    microSvToHeatWeightOld(u) {
+        if (u >= 100) return 1.0;           // #ffff00
+        if (u >= 65.54) return 0.92;        // #ffff80
+        if (u >= 10) return 0.84;           // #ff8000
+        if (u >= 5) return 0.76;            // #ff4000
+        if (u >= 1.65) return 0.68;         // #ff0000
+        if (u >= 1.0) return 0.60;          // #ff0080
+        if (u >= 0.43) return 0.52;         // #ff00ff
+        if (u >= 0.25) return 0.44;         // #8000ff
+        if (u >= 0.14) return 0.36;         // #0080ff
+        if (u >= 0.08) return 0.28;         // #00ffff
+        if (u >= 0.03) return 0.20;         // #0000ff
+        return 0.08;                        // <0.03  #000000
+    }
+
     // Create radiation level legend
     createLegend() {
         const legend = L.control({ position: 'bottomright' });
@@ -218,22 +247,48 @@ class BGeigieMap {
     createHeatmap() {
         if (!this.importData) return;
 
-        const heatmapData = this.importData.measurements
-            .filter(m => m.latitude && m.longitude)
-            .map(m => [m.latitude, m.longitude, m.cpm / 100]); // Normalize CPM for heatmap
+        // Aggregate into finer grid cells and use AVERAGE µSv/h per cell
+        const cellSize = 0.0003; // ~30-35m
+        const grid = new Map();
+        for (const m of this.importData.measurements) {
+            if (!m.latitude || !m.longitude) continue;
+            const latCell = Math.floor(m.latitude / cellSize);
+            const lngCell = Math.floor(m.longitude / cellSize);
+            const key = `${latCell},${lngCell}`;
+            const u = this.cpmToMicroSvPerHour(m.cpm);
+            const g = grid.get(key) || { lat: 0, lng: 0, sum: 0, n: 0 };
+            g.lat += m.latitude;
+            g.lng += m.longitude;
+            g.sum += u;
+            g.n += 1;
+            grid.set(key, g);
+        }
+        const intensityScale = 0.8;
+        const heatmapData = Array.from(grid.values()).map(g => {
+            const lat = g.lat / g.n;
+            const lng = g.lng / g.n;
+            const uAvg = g.sum / g.n;
+            return [lat, lng, this.microSvToHeatWeight(uAvg) * intensityScale];
+        });
+
+        // Gradient matching marker palette (6 colors)
+        const gradient = {
+            0.00: '#0000ff',   // blue (floor)
+            0.12: '#0000ff',   // blue <0.08
+            0.28: '#00ffff',   // cyan 0.08-0.25
+            0.46: '#8000ff',   // purple 0.25-1
+            0.64: '#ff0000',   // red 1-10
+            0.82: '#ff8000',   // orange 10-100
+            1.00: '#ffff00'    // yellow >=100
+        };
 
         this.heatmapLayer = L.heatLayer(heatmapData, {
-            radius: 20,
-            blur: 15,
+            radius: 18,
+            blur: 10,
             maxZoom: 17,
-            gradient: {
-                0.0: '#00ff00',
-                0.2: '#80ff00', 
-                0.4: '#ffff00',
-                0.6: '#ff8000',
-                0.8: '#ff0000',
-                1.0: '#800080'
-            }
+            max: 1.0,
+            minOpacity: 0.5,
+            gradient
         }).addTo(this.map);
     }
 }

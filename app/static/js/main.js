@@ -21,6 +21,52 @@ const initializeApp = async () => {
     handleRouteChange(); // Render initial route
 };
 
+// Add the radiation level legend (scale) to the map
+const addRadiationLegend = (map) => {
+    // Remove previous legend if present
+    if (window.radiationLegend) {
+        try { map.removeControl(window.radiationLegend); } catch (e) {}
+        window.radiationLegend = null;
+    }
+
+    const legend = L.control({ position: 'bottomright' });
+    legend.onAdd = function() {
+        const div = L.DomUtil.create('div', 'radiation-legend');
+        div.innerHTML = `
+            <h4>Radiation Levels (µSv/h)</h4>
+            <div class="legend-item"><span style="background:#ffff00"></span> ≥ 100 (Extreme)</div>
+            <div class="legend-item"><span style="background:#ffff80"></span> 65.54-100 (Very Extreme)</div>
+            <div class="legend-item"><span style="background:#ff8000"></span> 10-65.54 (Very High)</div>
+            <div class="legend-item"><span style="background:#ff4000"></span> 5-10 (High)</div>
+            <div class="legend-item"><span style="background:#ff0000"></span> 1.65-5 (Elevated High)</div>
+            <div class="legend-item"><span style="background:#ff0080"></span> 1.0-1.65 (Moderate High)</div>
+            <div class="legend-item"><span style="background:#ff00ff"></span> 0.43-1.0 (Moderate)</div>
+            <div class="legend-item"><span style="background:#8000ff"></span> 0.25-0.43 (Low-Moderate)</div>
+            <div class="legend-item"><span style="background:#0080ff"></span> 0.14-0.25 (Elevated Normal)</div>
+            <div class="legend-item"><span style="background:#00ffff"></span> 0.08-0.14 (Normal)</div>
+            <div class="legend-item"><span style="background:#0000ff"></span> 0.03-0.08 (Low Normal)</div>
+            <div class="legend-item"><span style="background:#000000"></span> < 0.03 (Very Low)</div>
+        `;
+        return div;
+    };
+    legend.addTo(map);
+    window.radiationLegend = legend;
+};
+
+// Inject minimal CSS for legend if not already present
+const ensureLegendStyles = () => {
+    if (document.getElementById('radiation-legend-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'radiation-legend-styles';
+    style.textContent = `
+      .radiation-legend { background: rgba(255,255,255,0.95); padding: 10px 12px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); font: 12px/1.2 Arial, sans-serif; }
+      .radiation-legend h4 { margin: 0 0 6px; font-size: 12px; font-weight: 700; }
+      .radiation-legend .legend-item { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+      .radiation-legend .legend-item span { display: inline-block; width: 18px; height: 10px; border: 1px solid #999; }
+    `;
+    document.head.appendChild(style);
+};
+
 const setupEventListeners = () => {
     const loginModal = document.getElementById('login-modal');
     const signupModal = document.getElementById('signup-modal');
@@ -610,7 +656,6 @@ const renderBGeigieImportDetail = async (importId) => {
             </div>
 
             <div style="margin: 20px 0;">
-                <button onclick="toggleHeatmap()" style="background: #6c757d; color: white; border: none; padding: 8px 16px; margin-right: 10px; border-radius: 4px; cursor: pointer;">Toggle Heatmap</button>
                 <button onclick="fitToData()" style="background: #007bff; color: white; border: none; padding: 8px 16px; margin-right: 10px; border-radius: 4px; cursor: pointer;">Fit to Data</button>
                 <button onclick="exportData(${importData.id})" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Export Data</button>
             </div>
@@ -764,6 +809,10 @@ const initializeBGeigieMap = async (importId) => {
     }).addTo(map);
     
     window.bgeigieMapInstance = map;
+
+    // Ensure legend styles then add legend (scale)
+    ensureLegendStyles();
+    addRadiationLegend(map);
     
     // Load and display measurement data
     try {
@@ -836,8 +885,10 @@ const initializeBGeigieMap = async (importId) => {
             }
         });
         
-        // Store markers globally for control buttons
+        // Store globals for controls
         window.currentMarkers = markers;
+        window.currentMeasurements = measurements;
+        window.heatLayer = null;
         
         // Fit map to show all markers
         if (markers.length > 0) {
@@ -869,10 +920,125 @@ const initializeBGeigieMap = async (importId) => {
 
 // Global functions for map controls
 window.toggleHeatmap = () => {
-    if (window.bgeigieMapInstance && window.currentMarkers) {
-        // Simple toggle between markers and heatmap view
-        console.log('Toggle heatmap functionality - to be implemented');
+    const map = window.bgeigieMapInstance;
+    if (!map || !window.currentMeasurements) return;
+
+    // If heatmap exists, turn it off and restore markers
+    if (window.heatLayer) {
+        map.removeLayer(window.heatLayer);
+        window.heatLayer = null;
+
+        // Recreate markers
+        if (window.currentMarkers && window.currentMarkers.length > 0) return; // already present
+        window.currentMarkers = [];
+        window.currentMeasurements.forEach(measurement => {
+            if (measurement.latitude && measurement.longitude) {
+                const cpm = measurement.cpm || 0;
+                const microSvPerHour = cpm / 334;
+                const getColor = (cpmVal) => {
+                    const uSvh = cpmVal / 334;
+                    if (uSvh >= 100) return '#ffff00';
+                    if (uSvh >= 10) return '#ff8000';
+                    if (uSvh >= 1) return '#ff0000';
+                    if (uSvh >= 0.25) return '#8000ff';
+                    if (uSvh >= 0.08) return '#00ffff';
+                    return '#0000ff';
+                };
+                const marker = L.circleMarker([measurement.latitude, measurement.longitude], {
+                    radius: Math.max(3, Math.min(10, Math.log(cpm + 1) * 2)),
+                    fillColor: getColor(cpm),
+                    color: '#000',
+                    weight: 1,
+                    opacity: 0.8,
+                    fillOpacity: 0.7
+                });
+                const tooltipContent = `
+                    <div class="measurement-tooltip" style="background: white; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); font-size: 12px; line-height: 1.3;">
+                        <strong>${microSvPerHour.toFixed(2)} µSv/h</strong><br>
+                        <strong>${cpm} CPM</strong><br>
+                        Lat: ${measurement.latitude.toFixed(6)}<br>
+                        Lng: ${measurement.longitude.toFixed(6)}<br>
+                        Alt: ${(measurement.altitude ?? 0)} m<br>
+                        ${measurement.captured_at ? new Date(measurement.captured_at).toLocaleString() : ''}
+                    </div>
+                `;
+                marker.bindTooltip(tooltipContent, {
+                    permanent: false,
+                    direction: 'top',
+                    offset: [0, -10],
+                    className: 'custom-tooltip',
+                    interactive: true,
+                    sticky: true
+                });
+                marker.on('mouseover', function () { this.openTooltip(); });
+                marker.on('mouseout', function () { this.closeTooltip(); });
+                marker.addTo(map);
+                window.currentMarkers.push(marker);
+            }
+        });
+        return;
     }
+
+    // Turn on heatmap: remove markers and add heat layer
+    if (window.currentMarkers) {
+        window.currentMarkers.forEach(m => map.removeLayer(m));
+        window.currentMarkers = [];
+    }
+
+    // Map µSv/h to heat weight (discrete) matching marker 6-color scale
+    // <0.08 blue, 0.08-0.25 cyan, 0.25-1 purple, 1-10 red, 10-100 orange, >=100 yellow
+    const uSvhToWeight = (u) => {
+        if (u >= 100) return 1.00;        // yellow
+        if (u >= 10) return 0.82;         // orange
+        if (u >= 1.0) return 0.64;        // red
+        if (u >= 0.25) return 0.46;       // purple
+        if (u >= 0.08) return 0.28;       // cyan
+        return 0.12;                      // blue
+    };
+
+    // Aggregate by grid cell and use AVERAGE µSv/h per cell
+    const cellSize = 0.0003; // ~30-35m grid at mid-latitudes (finer)
+    const grid = new Map();
+    for (const m of (window.currentMeasurements || [])) {
+        if (!m.latitude || !m.longitude) continue;
+        const latCell = Math.floor(m.latitude / cellSize);
+        const lngCell = Math.floor(m.longitude / cellSize);
+        const key = `${latCell},${lngCell}`;
+        const u = (m.cpm || 0) / 334;
+        const g = grid.get(key) || { lat: 0, lng: 0, sum: 0, n: 0 };
+        g.lat += m.latitude;
+        g.lng += m.longitude;
+        g.sum += u;
+        g.n += 1;
+        grid.set(key, g);
+    }
+    const intensityScale = 0.8; // stronger intensity (less transparent look)
+    const heatData = Array.from(grid.values()).map(g => {
+        const lat = g.lat / g.n;
+        const lng = g.lng / g.n;
+        const uAvg = g.sum / g.n;
+        return [lat, lng, uSvhToWeight(uAvg) * intensityScale];
+    });
+
+    // Gradient matching marker 6-color palette
+    const gradient = {
+        0.00: '#0000ff',   // blue floor
+        0.12: '#0000ff',   // blue <0.08
+        0.28: '#00ffff',   // cyan 0.08-0.25
+        0.46: '#8000ff',   // purple 0.25-1
+        0.64: '#ff0000',   // red 1-10
+        0.82: '#ff8000',   // orange 10-100
+        1.00: '#ffff00'    // yellow ≥100
+    };
+
+    window.heatLayer = L.heatLayer(heatData, {
+        radius: 18,  // slightly smaller, sharper
+        blur: 10,    // less blur for crisper dots
+        maxZoom: 17,
+        max: 1.0,
+        minOpacity: 0.5,
+        gradient
+    }).addTo(map);
 };
 
 window.fitToData = () => {
