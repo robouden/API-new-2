@@ -52,6 +52,7 @@ class MeasurementBase(BaseModel):
     cpm: int
     latitude: float
     longitude: float
+    altitude: Optional[float] = None
 
 class Measurement(MeasurementBase):
     id: int
@@ -60,6 +61,7 @@ class Measurement(MeasurementBase):
     cpm: int
     latitude: float
     longitude: float
+    altitude: Optional[float] = None
     captured_at: datetime
 
     class Config:

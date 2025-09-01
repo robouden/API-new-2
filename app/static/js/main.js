@@ -813,6 +813,7 @@ const initializeBGeigieMap = async (importId) => {
                         <strong>${cpm} CPM</strong><br>
                         Lat: ${measurement.latitude.toFixed(6)}<br>
                         Lng: ${measurement.longitude.toFixed(6)}<br>
+                        Alt: ${(measurement.altitude ?? 0)} m<br>
                         ${measurement.captured_at ? new Date(measurement.captured_at).toLocaleString() : ''}
                     </div>
                 `;

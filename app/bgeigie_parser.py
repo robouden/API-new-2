@@ -64,11 +64,30 @@ def parse_bgeigie_log(content: str):
                 except ValueError:
                     captured_at = datetime.datetime.now()
             
+            # Try to parse altitude if present; many logs don't include it
+            altitude = None
+            try:
+                # Heuristic: after longitude components, some formats include altitude in meters
+                # Commonly around index 11-13; pick the first parsable float there
+                for idx in (11, 12, 13):
+                    if len(fields) > idx and fields[idx]:
+                        try:
+                            altitude_candidate = float(fields[idx])
+                            # Filter out obviously invalid values
+                            if -5000.0 <= altitude_candidate <= 50000.0:
+                                altitude = altitude_candidate
+                                break
+                        except ValueError:
+                            continue
+            except Exception:
+                altitude = None
+
             measurement = {
                 'captured_at': captured_at,
                 'cpm': int(fields[3]) if fields[3] else 0,
                 'latitude': ddm_to_dd(fields[7], fields[8]) if len(fields) > 8 else 0.0,
                 'longitude': ddm_to_dd(fields[9], fields[10]) if len(fields) > 10 else 0.0,
+                'altitude': altitude,
             }
             measurements.append(measurement)
         except (ValueError, IndexError) as e:

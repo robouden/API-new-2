@@ -93,6 +93,7 @@ def create_measurements(db: Session, measurements: list[dict], bgeigie_import_id
             cpm=measurement['cpm'],
             latitude=measurement['latitude'],
             longitude=measurement['longitude'],
+            altitude=measurement.get('altitude'),
             captured_at=measurement['captured_at']
         )
         db_measurements.append(db_measurement)

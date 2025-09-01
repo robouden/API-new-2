@@ -173,6 +173,7 @@ async def get_import_measurements(
             "cpm": m.cpm,
             "latitude": m.latitude,
             "longitude": m.longitude,
+            "altitude": m.altitude,
             "captured_at": m.captured_at.isoformat() if m.captured_at else "",
         })
     
@@ -277,6 +278,7 @@ async def create_bgeigie_import(
                 'cpm': m['cpm'],
                 'latitude': m['latitude'],
                 'longitude': m['longitude'],
+                'altitude': m.get('altitude'),
                 'captured_at': m['captured_at'],
             }
             for m in measurements_data
@@ -399,6 +401,7 @@ async def process_bgeigie_import(id: int, db: Session = Depends(get_db), current
                 'cpm': m['cpm'],
                 'latitude': m['latitude'],
                 'longitude': m['longitude'],
+                'altitude': m.get('altitude'),
                 'captured_at': m['captured_at'],
             }
             for m in measurements_data

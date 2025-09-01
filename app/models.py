@@ -55,6 +55,7 @@ class Measurement(Base):
     cpm = Column(Integer)
     latitude = Column(Float)
     longitude = Column(Float)
+    altitude = Column(Float, nullable=True)
     captured_at = Column(DateTime)
     bgeigie_import_id = Column(Integer, ForeignKey("bgeigie_imports.id"))
 

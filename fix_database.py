@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Database schema fix script for Safecast API
-Adds missing device_id column to measurements table
+Adds missing columns to measurements table (device_id, altitude)
 """
 
 import duckdb
@@ -18,18 +18,27 @@ def fix_database_schema():
         # Connect to DuckDB
         conn = duckdb.connect(db_path)
         
-        # Check if device_id column exists in measurements table
+        # Check current schema for measurements table
         result = conn.execute("DESCRIBE measurements").fetchall()
         columns = [row[0] for row in result]
         
         print("Current measurements table columns:", columns)
         
+        # device_id column
         if 'device_id' not in columns:
             print("Adding device_id column to measurements table...")
             conn.execute("ALTER TABLE measurements ADD COLUMN device_id INTEGER")
-            print("✓ device_id column added successfully")
+            print("\u2713 device_id column added successfully")
         else:
-            print("✓ device_id column already exists")
+            print("\u2713 device_id column already exists")
+
+        # altitude column
+        if 'altitude' not in columns:
+            print("Adding altitude column to measurements table...")
+            conn.execute("ALTER TABLE measurements ADD COLUMN altitude DOUBLE")
+            print("\u2713 altitude column added successfully")
+        else:
+            print("\u2713 altitude column already exists")
         
         # Verify the change
         result = conn.execute("DESCRIBE measurements").fetchall()
