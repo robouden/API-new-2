@@ -119,6 +119,7 @@ async def get_import(
         "cities": db_import.cities,
         "credits": db_import.credits,
         "description": db_import.description,
+        "subtype": db_import.subtype,
         "approved": db_import.approved,
         "rejected": db_import.rejected,
         "approved_by": db_import.approved_by,
@@ -208,9 +209,12 @@ async def update_import_metadata(
     for field, value in metadata.dict(exclude_unset=True).items():
         setattr(db_import, field, value)
     
-    # Status transition
-    # If already approved, keep approved; otherwise, submitting metadata moves to submitted
-    if db_import.status in ["processed", "unprocessed", "rejected", "submitted"]:
+    # Status transition and email action
+    # If already approved, keep approved and do not send email; otherwise, submitting metadata moves to submitted
+    send_email = True
+    if db_import.status == "approved":
+        send_email = False
+    elif db_import.status in ["processed", "unprocessed", "rejected", "submitted"]:
         db_import.status = "submitted"
     
     db.commit()
@@ -361,18 +365,26 @@ async def reject_bgeigie_import(id: int, db: Session = Depends(get_db), current_
     if not db_import:
         raise HTTPException(status_code=404, detail="Import not found")
     
-    # Send email notification to the import owner
-    try:
-        await send_bgeigie_notification_email(
-            recipient_email=db_import.user.email,
-            recipient_name=db_import.user.name or db_import.user.email,
-            action="rejected",
-            import_id=db_import.id,
-            import_filename=db_import.source,
-            admin_name=current_user.name or current_user.email
-        )
-    except Exception as e:
-        print(f"Failed to send rejection email: {e}")
+    # Send email notification to the import owner (only when newly submitted)
+    send_email = True
+    if db_import.status == "approved":
+        send_email = False
+    elif db_import.status in ["processed", "unprocessed", "rejected", "submitted"]:
+        db_import.status = "submitted"
+    
+    if send_email:
+        try:
+            await send_bgeigie_notification_email(
+                recipient_email=db_import.user.email,
+                recipient_name=db_import.user.name or db_import.user.email,
+                action="submitted",
+                import_id=db_import.id,
+                import_name=db_import.name or f"Import #{db_import.id}",
+                admin_name=current_user.name or current_user.email
+            )
+        except Exception as e:
+            # Log but do not fail the request due to email issues
+            print(f"Failed to send email to {db_import.user.email}: {e}")
     
     return db_import
 

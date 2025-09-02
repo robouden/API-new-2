@@ -825,7 +825,7 @@ const renderBGeigieImportDetail = async (importId) => {
                     </div>
                     
                     <button type="submit" style="background: #28a745; color: white; border: none; padding: 12px 24px; border-radius: 4px; cursor: pointer; font-size: 16px;">
-                        Submit for Approval
+                        ${importData.status === 'approved' ? 'Save' : 'Submit for Approval'}
                     </button>
                 </form>
             </div>
@@ -877,8 +877,14 @@ const renderBGeigieImportDetail = async (importId) => {
                     });
                     
                     if (response.ok) {
-                        alert('Metadata saved successfully! Import submitted for approval.');
-                        window.location.hash = '#bgeigie-imports';
+                        if (importData.status === 'approved') {
+                            alert('Metadata saved successfully.');
+                            // Stay on the detail page; optionally refresh to reflect any changes
+                            window.location.reload();
+                        } else {
+                            alert('Metadata saved successfully! Import submitted for approval.');
+                            window.location.hash = '#bgeigie-imports';
+                        }
                     } else {
                         throw new Error('Failed to save metadata');
                     }

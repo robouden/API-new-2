@@ -7,7 +7,6 @@
     
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js" />
     
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -71,6 +70,7 @@
                     <p>Please provide additional information about this radiation measurement drive:</p>
                     
                     <form id="metadata-form">
+                        <input type="hidden" id="import-status" value="{{ import.status }}">
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="name">Import Name</label>
@@ -112,11 +112,9 @@
                                       placeholder="Describe the measurement drive, purpose, or any notable observations...">{{ import.description or '' }}</textarea>
                         </div>
                         
-                        {% if import.status != 'approved' %}
                         <button type="submit" class="submit-metadata">
-                            Submit for Approval
+                            {{ 'Save' if import.status == 'approved' else 'Submit for Approval' }}
                         </button>
-                        {% endif %}
                     </form>
                 </div>
                 {% endif %}
@@ -196,6 +194,13 @@
             const importId = {{ import.id|tojson }};
             window.bgeigieMap.loadImportData(importId);
             
+            // Ensure the metadata submit button text reflects approval status
+            const statusEl = document.getElementById('import-status');
+            const submitBtn = document.querySelector('.submit-metadata');
+            if (statusEl && statusEl.value === 'approved' && submitBtn) {
+                submitBtn.textContent = 'Save';
+            }
+
             // Handle metadata form submission
             const metadataForm = document.getElementById('metadata-form');
             if (metadataForm) {
@@ -208,6 +213,8 @@
             
             const formData = new FormData(event.target);
             const metadata = Object.fromEntries(formData.entries());
+            const statusEl = document.getElementById('import-status');
+            const isApproved = statusEl && statusEl.value === 'approved';
             
             try {
                 const token = localStorage.getItem('token');
@@ -221,9 +228,15 @@
                 });
                 
                 if (response.ok) {
-                    alert('Metadata saved successfully! Import submitted for approval.');
-                    // Redirect back to the imports list to see the updated status
-                    window.location.href = '/#bgeigie-imports';
+                    if (isApproved) {
+                        alert('Metadata saved successfully.');
+                        // Stay on page to continue viewing
+                        window.location.reload();
+                    } else {
+                        alert('Metadata saved successfully! Import submitted for approval.');
+                        // Redirect back to the imports list to see the updated status
+                        window.location.href = '/#bgeigie-imports';
+                    }
                 } else {
                     throw new Error('Failed to save metadata');
                 }
