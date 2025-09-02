@@ -21,6 +21,44 @@ const initializeApp = async () => {
     handleRouteChange(); // Render initial route
 };
 
+// Make admin save handler top-level so it is in scope when wiring events
+const handleAdminUserSave = async (e) => {
+    const userId = e.currentTarget.dataset.userId;
+    const nameInput = document.querySelector(`.user-name[data-user-id="${userId}"]`);
+    const emailInput = document.querySelector(`.user-email[data-user-id="${userId}"]`);
+    const activeInput = document.querySelector(`.user-active[data-user-id="${userId}"]`);
+    const roleSelect = document.querySelector(`.role-select[data-user-id="${userId}"]`);
+
+    const payload = {
+        name: nameInput ? nameInput.value : undefined,
+        email: emailInput ? emailInput.value : undefined,
+        is_active: activeInput ? !!activeInput.checked : undefined,
+        role: roleSelect ? roleSelect.value : undefined,
+    };
+
+    try {
+        const res = await fetch(`/users/users/${userId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${window.appState.token}`
+            },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            alert(`Failed to save user: ${err.detail || res.status}`);
+            return;
+        }
+        await res.json();
+        alert('User updated.');
+        renderUsersView();
+    } catch (error) {
+        console.error('Admin user save failed', error);
+        alert('Failed to save user.');
+    }
+};
+
 // Add the radiation level legend (scale) to the map
 const addRadiationLegend = (map) => {
     // Remove previous legend if present
@@ -194,13 +232,14 @@ const handleLogin = async (e) => {
 
 const handleSignup = async (e) => {
     e.preventDefault();
+    const name = document.getElementById('signup-name') ? document.getElementById('signup-name').value : '';
     const email = document.getElementById('signup-email').value;
     const password = document.getElementById('signup-password').value;
     try {
         const response = await fetch('/users/users/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
+            body: JSON.stringify({ email, password, name: name || undefined })
         });
         if (response.ok) {
             alert('Signup successful! Please log in.');
@@ -229,8 +268,8 @@ const handleLogout = () => {
 const updateUIForLoggedIn = (user) => {
     document.getElementById('auth-nav').classList.add('hidden');
     document.getElementById('user-info').classList.remove('hidden');
-    document.getElementById('user-email').textContent = user.email;
-    document.getElementById('user-api-key').textContent = user.api_key;
+    const label = (user.name || user.email) + (user.role === 'admin' ? ' (Admin)' : '');
+    document.getElementById('user-email').textContent = label;
     document.getElementById('upload-btn-wrapper').classList.remove('hidden');
 };
 
@@ -362,21 +401,48 @@ const renderUsersView = async () => {
         const users = await usersRes.json();
         const currentUser = await currentUserRes.json();
 
-        let tableHtml = `<h2>Users</h2>
-            <table class="table"><thead><tr><th>ID</th><th>Email</th><th>Is Active</th><th>Role</th><th>API Key</th>`;
-        if (currentUser.role === 'admin') tableHtml += `<th>Actions</th>`;
+        // Profile editor for current user
+        let profileHtml = `
+            <section style="margin-bottom:20px; padding:12px; border:1px solid #ddd; border-radius:6px;">
+                <h3>Your Profile</h3>
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
+                    <label for="profile-name"><strong>Display Name</strong></label>
+                    <input id="profile-name" type="text" value="${(currentUser.name || '')}" placeholder="Your name" style="padding:6px; min-width:220px;">
+                    <button id="save-profile-name" class="button-primary">Save</button>
+                </div>
+                <div style="margin-top:8px; display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
+                    <label for="profile-api-key"><strong>API Key</strong></label>
+                    <input id="profile-api-key" type="text" value="${currentUser.api_key || ''}" readonly style="padding:6px; min-width:320px;">
+                    <button id="copy-api-key" class="button-secondary">Copy</button>
+                </div>
+                <small>Email: ${currentUser.email}</small>
+            </section>
+        `;
+
+        let tableHtml = `${profileHtml}<h2>Users</h2>
+            <table class="table"><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Is Active</th><th>Role</th>`;
+        if (currentUser.role === 'admin') tableHtml += `<th>API Key</th><th>Actions</th>`;
         tableHtml += `</tr></thead><tbody>`;
 
         users.forEach(user => {
+            const isAdmin = currentUser.role === 'admin';
             tableHtml += `<tr>
-                <td>${user.id}</td><td>${user.email}</td><td>${user.is_active}</td><td>${user.role}</td><td>${user.api_key}</td>`;
-            if (currentUser.role === 'admin') {
-                tableHtml += `<td>
-                    <select class="role-select" data-user-id="${user.id}">
+                <td>${user.id}</td>
+                <td>${isAdmin ? `<input type="text" class="user-name" data-user-id="${user.id}" value="${user.name || ''}" />` : (user.name || '')}</td>
+                <td>${isAdmin ? `<input type="email" class="user-email" data-user-id="${user.id}" value="${user.email}" />` : user.email}</td>
+                <td>${isAdmin ? `<input type="checkbox" class="user-active" data-user-id="${user.id}" ${user.is_active ? 'checked' : ''} />` : user.is_active}</td>
+                <td>${isAdmin ? `<select class="role-select" data-user-id="${user.id}">
                         <option value="user" ${user.role === 'user' ? 'selected' : ''}>User</option>
                         <option value="moderator" ${user.role === 'moderator' ? 'selected' : ''}>Moderator</option>
                         <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
-                    </select>
+                    </select>` : user.role}
+                </td>`;
+            if (isAdmin) {
+                tableHtml += `<td>${user.api_key || ''}</td>`;
+            }
+            if (isAdmin) {
+                tableHtml += `<td>
+                    <button class="button-primary save-user" data-user-id="${user.id}">Save</button>
                 </td>`;
             }
             tableHtml += `</tr>`;
@@ -384,9 +450,61 @@ const renderUsersView = async () => {
         tableHtml += `</tbody></table>`;
         main.innerHTML = tableHtml;
 
+        // Wire profile editor
+        const saveBtn = document.getElementById('save-profile-name');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async () => {
+                const newName = document.getElementById('profile-name').value;
+                try {
+                    const res = await fetch('/users/users/me/profile', {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${window.appState.token}`
+                        },
+                        body: JSON.stringify({ name: newName || null })
+                    });
+                    if (!res.ok) {
+                        const err = await res.json();
+                        alert(`Failed to update profile: ${err.detail || res.status}`);
+                        return;
+                    }
+                    const updated = await res.json();
+                    window.appState.currentUser = updated;
+                    updateUIForLoggedIn(updated);
+                    alert('Profile updated.');
+                } catch (e) {
+                    console.error('Profile update failed', e);
+                    alert('Profile update failed');
+                }
+            });
+        }
+
+        // Wire copy API key
+        const copyBtn = document.getElementById('copy-api-key');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', async () => {
+                const input = document.getElementById('profile-api-key');
+                try {
+                    await navigator.clipboard.writeText(input.value || '');
+                    copyBtn.textContent = 'Copied';
+                    setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1200);
+                } catch (e) {
+                    // Fallback for older browsers
+                    input.select();
+                    document.execCommand('copy');
+                    copyBtn.textContent = 'Copied';
+                    setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1200);
+                }
+            });
+        }
+
         if (currentUser.role === 'admin') {
             document.querySelectorAll('.role-select').forEach(select => {
                 select.addEventListener('change', handleRoleChange);
+            });
+            document.querySelectorAll('.save-user').forEach(btn => {
+                btn.addEventListener('click', handleAdminUserSave);
             });
         }
     } catch (error) {

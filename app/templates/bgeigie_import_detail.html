@@ -112,9 +112,11 @@
                                       placeholder="Describe the measurement drive, purpose, or any notable observations...">{{ import.description or '' }}</textarea>
                         </div>
                         
+                        {% if import.status != 'approved' %}
                         <button type="submit" class="submit-metadata">
                             Submit for Approval
                         </button>
+                        {% endif %}
                     </form>
                 </div>
                 {% endif %}

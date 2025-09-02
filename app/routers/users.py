@@ -98,8 +98,16 @@ async def update_user_profile(
     db: Session = Depends(get_db)
 ):
     """Update current user's profile"""
-    current_user.name = profile.name
-    current_user.email = profile.email
+    # Update name if provided
+    if profile.name is not None:
+        current_user.name = profile.name
+
+    # Update email if provided and unique
+    if profile.email is not None and profile.email != current_user.email:
+        existing = crud.get_user_by_email(db, email=profile.email)
+        if existing and existing.id != current_user.id:
+            raise HTTPException(status_code=400, detail="Email already in use")
+        current_user.email = profile.email
     db.commit()
     db.refresh(current_user)
     return current_user
@@ -115,6 +123,22 @@ async def get_user_profile(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+@router.put("/users/{user_id}", response_model=schemas.User)
+async def admin_update_user(
+    user_id: int,
+    user_update: schemas.UserUpdate,
+    db: Session = Depends(get_db),
+    admin_user: models.User = Depends(get_current_admin_user)
+):
+    """Admin: update user fields (name, email, is_active, role)."""
+    try:
+        updated = crud.update_user(db, user_id=user_id, update=user_update)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not updated:
+        raise HTTPException(status_code=404, detail="User not found")
+    return updated
 
 @router.get("/users/me/items/")
 async def read_own_items(current_user: models.User = Depends(get_current_active_user)):

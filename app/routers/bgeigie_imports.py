@@ -200,15 +200,18 @@ async def update_import_metadata(
     if not db_import:
         raise HTTPException(status_code=404, detail="Import not found")
     
-    if db_import.status not in ["processed", "unprocessed"]:
-        raise HTTPException(status_code=400, detail="Import must be processed or unprocessed to add metadata")
+    # Allow metadata updates for processed/unprocessed (submits for approval) and approved (just save)
+    if db_import.status not in ["processed", "unprocessed", "approved"]:
+        raise HTTPException(status_code=400, detail="Import must be processed, unprocessed, or approved to edit metadata")
     
     # Update metadata fields
     for field, value in metadata.dict(exclude_unset=True).items():
         setattr(db_import, field, value)
     
-    # Mark as submitted for approval
-    db_import.status = "submitted"
+    # Status transition
+    # If already approved, keep approved; otherwise, submitting metadata moves to submitted
+    if db_import.status in ["processed", "unprocessed", "rejected", "submitted"]:
+        db_import.status = "submitted"
     
     db.commit()
     db.refresh(db_import)

@@ -22,9 +22,12 @@ class User(UserBase):
 
 class UserProfile(BaseModel):
     name: Optional[str] = None
-    email: str
+    email: Optional[str] = None
 
 class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    is_active: Optional[bool] = None
     role: Optional[str] = None
 
 class BGeigieImportBase(BaseModel):

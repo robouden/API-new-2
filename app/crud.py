@@ -66,6 +66,31 @@ def update_user_role(db: Session, user_id: int, role: str):
         db.refresh(db_user)
     return db_user
 
+def update_user(db: Session, user_id: int, update: schemas.UserUpdate):
+    db_user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not db_user:
+        return None
+
+    # Email uniqueness check if changing
+    if update.email is not None and update.email != db_user.email:
+        existing = get_user_by_email(db, update.email)
+        if existing and existing.id != user_id:
+            raise ValueError("Email already in use")
+        db_user.email = update.email
+
+    if update.name is not None:
+        db_user.name = update.name
+
+    if update.is_active is not None:
+        db_user.is_active = update.is_active
+
+    if update.role is not None:
+        db_user.role = update.role
+
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
 def create_user(db: Session, user: schemas.UserCreate):
     hashed_password = security.get_password_hash(user.password)
     api_key = secrets.token_urlsafe(32)
@@ -74,7 +99,13 @@ def create_user(db: Session, user: schemas.UserCreate):
     result = db.execute(text("SELECT COALESCE(MAX(id), 0) + 1 FROM users")).fetchone()
     next_id = result[0]
     
-    db_user = models.User(id=next_id, email=user.email, hashed_password=hashed_password, api_key=api_key)
+    db_user = models.User(
+        id=next_id,
+        email=user.email,
+        name=getattr(user, 'name', None),
+        hashed_password=hashed_password,
+        api_key=api_key
+    )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
